@@ -1,0 +1,61 @@
+topic 1 : create a vite application 
+npm create vite@latest 
+
+topic 2: install tailwind css to the project (client)
+stop the running project and then install tailwind css. by using the following command. 
+E:\mern_stack_applications\login_logout_template>npm install tailwindcss @tailwindcss/vite
+
+added 32 packages in 43s
+
+8 packages are looking for funding
+  run `npm fund` for details
+
+E:\mern_stack_applications\login_logout_template>
+
+
+topic 3 : project folders and files. ( project structure)
+
+login_logout_template
+    client
+        src
+            components
+              common_components
+                Breadcrumb.jsx
+                MainLayout.jsx
+                ScrollToTopButton.jsx
+              footer_components
+                Footer.jsx
+                FooterLinks.jsx
+                AddressBlock.jsx
+
+              header_components
+                Header.jsx
+              subscription_components
+                Subscription.jsx
+            pages 
+              common_pages
+                AboutUs.jsx
+                Homepage.jsx
+                PageNotFound.jsx
+                PrivacyPolicy.jsx
+              contact_pages
+                Contact.jsx
+              employee_pages
+                EmployeeDashboard.jsx
+              super_admin_pages
+                AllUsers.jsx
+                SuperAdminDashboard.jsx
+                UpdateRole.jsx
+              user_pages
+                Login.jsx
+                Register.jsx
+                ForgotPassword.jsx
+                Profile.jsx
+                UpdateProfile.jsx
+                UserDashboard.jsx
+            App.jsx
+            App.css
+    backend
+    .gitignore
+    index.html 
+    

@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <title>Dashboard Preview</title>
+  </head>
+  <body class="bg-slate-50">
+    <div id="root" class="p-4"></div>
+
+    <script type="text/babel">
+      const SAMPLE_DATA = {"students": [{"name": "Asha", "gpa": 8.6, "attendance": 92, "risk": "Low", "math": 88, "cs": 91, "english": 84}, {"name": "Ravi", "gpa": 6.1, "attendance": 74, "risk": "High", "math": 55, "cs": 62, "english": 60}, {"name": "Neha", "gpa": 7.4, "attendance": 86, "risk": "Medium", "math": 72, "cs": 79, "english": 70}], "meta": {"semester": "Sem 5", "department": "CSE"}};
+
+
+
+      const Root = () => (
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-4 text-slate-700">
+            <div className="text-xl font-semibold">Generated Dashboard Preview</div>
+            <div className="text-sm">If charts need extra libs, add their CDN scripts in the HTML header.</div>
+          </div>
+          {React.createElement(App, {data: SAMPLE_DATA})}
+        </div>
+      );
+
+      const container = document.getElementById("root");
+      const root = ReactDOM.createRoot(container);
+      root.render(<Root />);
+    </script>
+  </body>
+</html>
