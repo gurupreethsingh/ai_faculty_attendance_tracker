@@ -37,11 +37,12 @@ const userSchema = new mongoose.Schema(
     },
 
     // =================================================
-    // ROLE
+    // APPLICATION ROLE
     // =================================================
 
     role: {
       type: String,
+
       enum: [
         "superadmin",
         "admin",
@@ -57,7 +58,9 @@ const userSchema = new mongoose.Schema(
         "maintenance_staff",
         "user",
       ],
+
       default: "user",
+
       index: true,
     },
 
@@ -65,9 +68,23 @@ const userSchema = new mongoose.Schema(
     // ACCOUNT STATUS
     // =================================================
 
+    /*
+     * This belongs to the User account itself.
+     *
+     * Example:
+     *
+     * Faculty leaves college:
+     *
+     * user.role = "user"
+     * user.isActive = true
+     *
+     * Their account still exists.
+     */
+
     isActive: {
       type: Boolean,
       default: true,
+      index: true,
     },
 
     // =================================================
@@ -180,18 +197,13 @@ const userSchema = new mongoose.Schema(
 
 // =====================================================
 // PASSWORD HASHING
-// IMPORTANT:
-// Mongoose 9 async pre-save middleware does NOT use next()
 // =====================================================
 
 userSchema.pre("save", async function () {
-  // Password has not changed.
-  // No need to hash it again.
   if (!this.isModified("password")) {
     return;
   }
 
-  // Hash password.
   this.password = await bcrypt.hash(this.password, 10);
 });
 

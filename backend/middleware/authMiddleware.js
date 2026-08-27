@@ -1,10 +1,6 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/UserModel");
 
-// =====================================================
-// JWT SECRET
-// =====================================================
-
 const getJwtSecret = () => {
   const secret = process.env.JWT_SECRET;
 
@@ -15,30 +11,16 @@ const getJwtSecret = () => {
   return secret;
 };
 
-// =====================================================
-// VERIFY ACCESS TOKEN
-// =====================================================
-
 const verifyAccessToken = (token) => {
   return jwt.verify(token, getJwtSecret());
 };
 
-// =====================================================
-// REQUIRE SIGN IN
-// =====================================================
-
+/**
+ * Authenticate user using Bearer JWT.
+ */
 const requireSignIn = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-
-    console.log("=================================");
-    console.log("AUTH MIDDLEWARE");
-    console.log("Authorization:", authHeader ? "PRESENT" : "MISSING");
-    console.log("=================================");
-
-    // =================================================
-    // CHECK AUTH HEADER
-    // =================================================
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({
@@ -47,10 +29,6 @@ const requireSignIn = async (req, res, next) => {
         code: "TOKEN_MISSING",
       });
     }
-
-    // =================================================
-    // EXTRACT TOKEN
-    // =================================================
 
     const token = authHeader.substring(7).trim();
 
@@ -62,20 +40,12 @@ const requireSignIn = async (req, res, next) => {
       });
     }
 
-    // =================================================
-    // VERIFY TOKEN
-    // =================================================
-
     let decoded;
 
     try {
       decoded = verifyAccessToken(token);
     } catch (jwtError) {
       console.error("JWT VERIFICATION ERROR:", jwtError.name, jwtError.message);
-
-      // -----------------------------------------------
-      // TOKEN EXPIRED
-      // -----------------------------------------------
 
       if (jwtError.name === "TokenExpiredError") {
         return res.status(401).json({
@@ -85,10 +55,6 @@ const requireSignIn = async (req, res, next) => {
         });
       }
 
-      // -----------------------------------------------
-      // INVALID TOKEN
-      // -----------------------------------------------
-
       if (jwtError.name === "JsonWebTokenError") {
         return res.status(401).json({
           success: false,
@@ -97,22 +63,12 @@ const requireSignIn = async (req, res, next) => {
         });
       }
 
-      // -----------------------------------------------
-      // OTHER JWT ERROR
-      // -----------------------------------------------
-
       return res.status(401).json({
         success: false,
         message: "Authentication failed.",
         code: "AUTHENTICATION_FAILED",
       });
     }
-
-    console.log("Decoded JWT:", decoded);
-
-    // =================================================
-    // CHECK USER ID
-    // =================================================
 
     if (!decoded || !decoded.id) {
       return res.status(401).json({
@@ -121,10 +77,6 @@ const requireSignIn = async (req, res, next) => {
         code: "INVALID_TOKEN",
       });
     }
-
-    // =================================================
-    // FIND USER
-    // =================================================
 
     const user = await User.findById(decoded.id).select(
       "-password -resetPasswordToken -resetPasswordExpire",
@@ -138,10 +90,6 @@ const requireSignIn = async (req, res, next) => {
       });
     }
 
-    // =================================================
-    // CHECK ACTIVE
-    // =================================================
-
     if (user.isActive === false) {
       return res.status(403).json({
         success: false,
@@ -150,17 +98,7 @@ const requireSignIn = async (req, res, next) => {
       });
     }
 
-    // =================================================
-    // ATTACH USER
-    // =================================================
-
     req.user = user;
-
-    console.log("Authenticated User:", {
-      id: user._id,
-      email: user.email,
-      role: user.role,
-    });
 
     next();
   } catch (error) {
@@ -174,10 +112,9 @@ const requireSignIn = async (req, res, next) => {
   }
 };
 
-// =====================================================
-// ROLE CHECK
-// =====================================================
-
+/**
+ * Role authorization middleware.
+ */
 const checkRoles = (...allowedRoles) => {
   return async (req, res, next) => {
     try {
@@ -189,10 +126,12 @@ const checkRoles = (...allowedRoles) => {
         });
       }
 
-      const currentRole = String(req.user.role || "").toLowerCase();
+      const currentRole = String(req.user.role || "")
+        .trim()
+        .toLowerCase();
 
       const normalizedAllowedRoles = allowedRoles.map((role) =>
-        String(role).toLowerCase(),
+        String(role).trim().toLowerCase(),
       );
 
       if (!normalizedAllowedRoles.includes(currentRole)) {
@@ -215,10 +154,6 @@ const checkRoles = (...allowedRoles) => {
   };
 };
 
-// =====================================================
-// ROLE MIDDLEWARE
-// =====================================================
-
 const isSuperAdmin = checkRoles("superadmin");
 
 const isAdmin = checkRoles("superadmin", "admin");
@@ -227,17 +162,12 @@ const adminMiddleware = checkRoles("superadmin", "admin");
 
 const authorizeRoles = (...roles) => checkRoles(...roles);
 
-// =====================================================
-// EXPORT
-// =====================================================
-
 module.exports = {
   requireSignIn,
   requireSignin: requireSignIn,
   isAuthenticatedUser: requireSignIn,
   protect: requireSignIn,
   verifyToken: requireSignIn,
-
   isSuperAdmin,
   isAdmin,
   adminMiddleware,

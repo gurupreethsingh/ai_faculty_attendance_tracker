@@ -48,7 +48,6 @@ app.use(
 // =====================================================
 
 app.use(cookieParser());
-
 app.use(express.json());
 
 app.use(
@@ -123,9 +122,10 @@ app.use((err, _req, res, _next) => {
 // =====================================================
 
 const DATABASE_URL =
-  process.env.DATABASE || "mongodb://127.0.0.1:27017/login_logout_template";
+  process.env.DATABASE ||
+  "mongodb://127.0.0.1:27017/ai_faculty_attendance_tracker";
 
-const PORT = process.env.PORT || 3112;
+const PORT = process.env.PORT || 3113;
 
 // =====================================================
 // CONNECT DATABASE

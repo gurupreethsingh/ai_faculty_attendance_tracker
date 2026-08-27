@@ -1,8 +1,6 @@
 const mongoose = require("mongoose");
 
-// =====================================================
 // SUBJECT SCHEMA
-// =====================================================
 
 const subjectSchema = new mongoose.Schema(
   {
@@ -23,10 +21,9 @@ const subjectSchema = new mongoose.Schema(
   },
 );
 
-// =====================================================
 // ATTENDANCE SCHEMA
-// TEMPORARY - WILL MOVE TO AttendanceModel.js
-// =====================================================
+// TEMPORARY
+// WILL MOVE TO AttendanceModel.js
 
 const dummyAttendanceSchema = new mongoose.Schema(
   {
@@ -104,10 +101,9 @@ const dummyAttendanceSchema = new mongoose.Schema(
   },
 );
 
-// =====================================================
 // TIMETABLE SCHEMA
-// TEMPORARY - WILL MOVE TO TimeTableModel.js
-// =====================================================
+// TEMPORARY
+// WILL MOVE TO TimeTableModel.js
 
 const dummyTimetableSchema = new mongoose.Schema(
   {
@@ -158,16 +154,10 @@ const dummyTimetableSchema = new mongoose.Schema(
   },
 );
 
-// =====================================================
 // FACULTY SCHEMA
-// =====================================================
 
 const facultySchema = new mongoose.Schema(
   {
-    // =================================================
-    // USER LINK
-    // =================================================
-
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -176,9 +166,7 @@ const facultySchema = new mongoose.Schema(
       index: true,
     },
 
-    // =================================================
     // FACULTY IDENTIFICATION
-    // =================================================
 
     employeeId: {
       type: String,
@@ -188,9 +176,7 @@ const facultySchema = new mongoose.Schema(
       index: true,
     },
 
-    // =================================================
     // PROFESSIONAL INFORMATION
-    // =================================================
 
     designation: {
       type: String,
@@ -222,9 +208,7 @@ const facultySchema = new mongoose.Schema(
       min: 0,
     },
 
-    // =================================================
     // EMPLOYMENT INFORMATION
-    // =================================================
 
     joiningDate: {
       type: Date,
@@ -244,36 +228,48 @@ const facultySchema = new mongoose.Schema(
       index: true,
     },
 
-    // =================================================
+    // SOFT DELETE
+
+    /*
+     * We preserve the Faculty document instead of
+     * physically deleting it.
+     *
+     * This protects historical data.
+     */
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+
     // SUBJECTS
-    // =================================================
 
     subjects: {
       type: [subjectSchema],
       default: [],
     },
 
-    // =================================================
     // CLASSES
-    // =================================================
 
     classes: {
       type: [String],
       default: [],
     },
 
-    // =================================================
     // TEMPORARY ATTENDANCE
-    // =================================================
 
     dummyAttendance: {
       type: [dummyAttendanceSchema],
       default: [],
     },
 
-    // =================================================
     // TEMPORARY TIMETABLE
-    // =================================================
 
     dummyTimetable: {
       type: [dummyTimetableSchema],
@@ -286,9 +282,7 @@ const facultySchema = new mongoose.Schema(
   },
 );
 
-// =====================================================
 // EXPORT
-// =====================================================
 
 module.exports =
   mongoose.models.Faculty || mongoose.model("Faculty", facultySchema);

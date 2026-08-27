@@ -17,195 +17,131 @@ import {
   FaBook,
   FaClock,
   FaSyncAlt,
+  FaRedo,
 } from "react-icons/fa";
 
 import { useAuth } from "../../context/AuthContext";
 
-// ============================================================
-// HELPERS
-// ============================================================
+// ==========================================================
+// CONSTANTS
+// ==========================================================
 
-const getFacultyId = (faculty) =>
-  faculty?._id || faculty?.id || faculty?.facultyId || "";
+const TOKEN_KEY = "travel_token";
+
+// ==========================================================
+// HELPERS
+// ==========================================================
 
 const getUser = (faculty) => {
-  if (faculty?.userId && typeof faculty.userId === "object") {
+  if (!faculty) {
+    return {};
+  }
+
+  if (
+    faculty.userId &&
+    typeof faculty.userId === "object" &&
+    !Array.isArray(faculty.userId)
+  ) {
     return faculty.userId;
   }
 
-  if (faculty?.user && typeof faculty.user === "object") {
+  if (
+    faculty.user &&
+    typeof faculty.user === "object" &&
+    !Array.isArray(faculty.user)
+  ) {
     return faculty.user;
   }
 
   return {};
 };
 
-// ============================================================
-// USER / FACULTY VALUE HELPERS
-// ============================================================
+const value = (...values) =>
+  values.find(
+    (v) => v !== undefined && v !== null && String(v).trim() !== "",
+  ) || "";
 
 const getName = (faculty) => {
   const user = getUser(faculty);
 
   return (
-    faculty?.fullName ||
-    faculty?.name ||
-    user?.fullName ||
-    user?.name ||
-    `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
-    "Unknown Faculty"
+    value(
+      faculty?.fullName,
+      faculty?.name,
+      user?.fullName,
+      user?.name,
+      `${user?.firstName || ""} ${user?.lastName || ""}`.trim(),
+    ) || "Unknown Faculty"
   );
 };
-
-const getEmail = (faculty) => {
-  const user = getUser(faculty);
-
-  return faculty?.email || user?.email || "";
-};
-
-const getPhone = (faculty) => {
-  const user = getUser(faculty);
-
-  return faculty?.phone || user?.phone || "";
-};
-
-// ============================================================
-// ADDRESS HELPERS
-// ============================================================
-
-const getAddressLine1 = (faculty) => {
-  const user = getUser(faculty);
-
-  return faculty?.addressLine1 || user?.addressLine1 || "";
-};
-
-const getAddressLine2 = (faculty) => {
-  const user = getUser(faculty);
-
-  return faculty?.addressLine2 || user?.addressLine2 || "";
-};
-
-const getCity = (faculty) => {
-  const user = getUser(faculty);
-
-  return faculty?.city || user?.city || "";
-};
-
-const getState = (faculty) => {
-  const user = getUser(faculty);
-
-  return faculty?.state || user?.state || "";
-};
-
-const getCountry = (faculty) => {
-  const user = getUser(faculty);
-
-  return faculty?.country || user?.country || "";
-};
-
-const getPostalCode = (faculty) => {
-  const user = getUser(faculty);
-
-  return (
-    faculty?.postalCode ||
-    faculty?.pincode ||
-    faculty?.zipCode ||
-    user?.postalCode ||
-    user?.pincode ||
-    user?.zipCode ||
-    ""
-  );
-};
-
-const getNationality = (faculty) => {
-  const user = getUser(faculty);
-
-  return faculty?.nationality || user?.nationality || "";
-};
-
-const getPreferredCurrency = (faculty) => {
-  const user = getUser(faculty);
-
-  return faculty?.preferredCurrency || user?.preferredCurrency || "";
-};
-
-// ============================================================
-// FACULTY HELPERS
-// ============================================================
-
-const getDesignation = (faculty) =>
-  faculty?.designation ||
-  faculty?.designationName ||
-  faculty?.position ||
-  "Not specified";
 
 const getDepartment = (faculty) => {
-  if (typeof faculty?.department === "object") {
-    return (
-      faculty.department?.name ||
-      faculty.department?.departmentName ||
-      "Not specified"
+  const department = faculty?.department;
+
+  if (department && typeof department === "object") {
+    return value(
+      department?.name,
+      department?.departmentName,
+      department?.title,
+      "Not specified",
     );
   }
 
-  if (typeof faculty?.departmentId === "object") {
-    return (
-      faculty.departmentId?.name ||
-      faculty.departmentId?.departmentName ||
-      "Not specified"
+  if (
+    faculty?.departmentId &&
+    typeof faculty.departmentId === "object" &&
+    !Array.isArray(faculty.departmentId)
+  ) {
+    return value(
+      faculty.departmentId?.name,
+      faculty.departmentId?.departmentName,
+      faculty.departmentId?.title,
+      "Not specified",
     );
   }
 
-  return (
-    faculty?.departmentName ||
-    faculty?.department ||
-    faculty?.departmentId ||
-    "Not specified"
+  return value(
+    faculty?.departmentName,
+    department,
+    faculty?.departmentId,
+    "Not specified",
   );
 };
 
-const getSubjects = (faculty) => {
-  if (Array.isArray(faculty?.subjects)) {
-    return faculty.subjects;
-  }
-
-  if (Array.isArray(faculty?.assignedSubjects)) {
-    return faculty.assignedSubjects;
-  }
-
-  return [];
-};
-
-const getClasses = (faculty) => {
-  if (Array.isArray(faculty?.classes)) {
-    return faculty.classes;
-  }
-
-  if (Array.isArray(faculty?.assignedClasses)) {
-    return faculty.assignedClasses;
-  }
-
-  return [];
-};
+const getDesignation = (faculty) =>
+  value(
+    faculty?.designation,
+    faculty?.designationName,
+    faculty?.position,
+    "Not specified",
+  );
 
 const getStatus = (faculty) => {
   if (faculty?.isActive === false) {
     return "inactive";
   }
 
-  return (
-    faculty?.status?.toString?.().toLowerCase() ||
-    faculty?.employmentStatus?.toString?.().toLowerCase() ||
-    "active"
-  );
+  return String(faculty?.status || faculty?.employmentStatus || "active")
+    .trim()
+    .toLowerCase();
 };
 
-const formatDate = (value) => {
-  if (!value) {
+const getArray = (faculty, ...keys) => {
+  for (const key of keys) {
+    if (Array.isArray(faculty?.[key])) {
+      return faculty[key];
+    }
+  }
+
+  return [];
+};
+
+const formatDate = (dateValue) => {
+  if (!dateValue) {
     return "—";
   }
 
-  const date = new Date(value);
+  const date = new Date(dateValue);
 
   if (Number.isNaN(date.getTime())) {
     return "—";
@@ -218,31 +154,62 @@ const formatDate = (value) => {
   });
 };
 
-// ============================================================
-// COMPONENT
-// ============================================================
+// ==========================================================
+// MAIN COMPONENT
+// ==========================================================
 
 const SingleFaculty = () => {
   const { id } = useParams();
+
   const navigate = useNavigate();
 
-  const auth = useAuth();
+  const { api, token, loading: authLoading } = useAuth();
 
-  const api = auth?.api;
-  const token = auth?.token;
-  const authLoading = auth?.loading;
+  // ==========================================================
+  // DATA
+  // ==========================================================
 
   const [faculty, setFaculty] = useState(null);
+
+  // ==========================================================
+  // LOADING / ERROR
+  // ==========================================================
+
   const [loading, setLoading] = useState(true);
+
   const [refreshing, setRefreshing] = useState(false);
+
   const [error, setError] = useState("");
 
-  // ============================================================
-  // FETCH FACULTY
-  // ============================================================
+  // ==========================================================
+  // GET CURRENT TOKEN
+  //
+  // Same approach used in AllFaculties.jsx.
+  //
+  // AuthContext token gets priority.
+  // localStorage is used as fallback.
+  // ==========================================================
+
+  const getCurrentToken = useCallback(() => {
+    const storedToken = localStorage.getItem(TOKEN_KEY) || "";
+
+    return token || storedToken || "";
+  }, [token]);
+
+  // ==========================================================
+  // FETCH SINGLE FACULTY
+  // ==========================================================
 
   const fetchFaculty = useCallback(
     async (showRefresh = false) => {
+      if (!api) {
+        return;
+      }
+
+      // ------------------------------------------------------
+      // CHECK FACULTY ID
+      // ------------------------------------------------------
+
       if (!id) {
         setFaculty(null);
         setLoading(false);
@@ -251,17 +218,27 @@ const SingleFaculty = () => {
         return;
       }
 
-      if (!api) {
-        return;
-      }
+      // ------------------------------------------------------
+      // GET LATEST TOKEN
+      // ------------------------------------------------------
 
-      if (!token) {
+      const currentToken = getCurrentToken();
+
+      // ------------------------------------------------------
+      // CHECK TOKEN
+      // ------------------------------------------------------
+
+      if (!currentToken) {
         setFaculty(null);
         setLoading(false);
         setRefreshing(false);
         setError("Authentication token not found. Please login again.");
         return;
       }
+
+      // ------------------------------------------------------
+      // LOADING STATE
+      // ------------------------------------------------------
 
       if (showRefresh) {
         setRefreshing(true);
@@ -272,64 +249,77 @@ const SingleFaculty = () => {
       setError("");
 
       try {
-        console.log("=================================");
-        console.log("FETCHING SINGLE FACULTY");
+        console.log("==========================================");
+        console.log("GET SINGLE FACULTY");
         console.log("Faculty ID:", id);
-        console.log("Token available:", !!token);
-        console.log("=================================");
+        console.log("Token available:", !!currentToken);
+        console.log("==========================================");
+
+        // ----------------------------------------------------
+        // IMPORTANT
+        //
+        // Set Authorization exactly like AllFaculties.jsx.
+        // ----------------------------------------------------
+
+        api.defaults.headers.common.Authorization = `Bearer ${currentToken}`;
+
+        // ----------------------------------------------------
+        // API REQUEST
+        // ----------------------------------------------------
 
         const response = await api.get(
           `/faculty/get-faculty-by-id/${encodeURIComponent(id)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${currentToken}`,
+            },
+          },
         );
 
-        console.log("=================================");
-        console.log("SINGLE FACULTY RESPONSE");
-        console.log("=================================");
-        console.log(response?.data);
-        console.log("=================================");
+        console.log("SINGLE FACULTY RESPONSE:", response?.data);
 
         const data = response?.data;
 
-        const facultyData =
+        // ----------------------------------------------------
+        // SUPPORT DIFFERENT POSSIBLE RESPONSE STRUCTURES
+        // ----------------------------------------------------
+
+        const result =
           data?.faculty ||
           data?.data?.faculty ||
           data?.data ||
           data?.result ||
-          data;
+          null;
 
-        if (
-          !facultyData ||
-          typeof facultyData !== "object" ||
-          Array.isArray(facultyData)
-        ) {
-          throw new Error(
-            "Faculty details were not returned by the server.",
-          );
+        // ----------------------------------------------------
+        // VALIDATE RESULT
+        // ----------------------------------------------------
+
+        if (!result || typeof result !== "object" || Array.isArray(result)) {
+          throw new Error("Faculty details were not returned by the server.");
         }
 
-        setFaculty(facultyData);
-        setError("");
+        // ----------------------------------------------------
+        // SET FACULTY
+        // ----------------------------------------------------
+
+        setFaculty(result);
       } catch (err) {
-        console.error(
-          "GET SINGLE FACULTY ERROR:",
-          err?.response?.data || err,
-        );
+        console.error("GET SINGLE FACULTY ERROR:", err?.response?.data || err);
 
         const status = err?.response?.status;
 
-        /*
-         * ------------------------------------------------------
-         * SESSION EXPIRED
-         * ------------------------------------------------------
-         *
-         * If the backend says 401, send the user back to login.
-         * The Login page will show:
-         *
-         * "Your session has expired. Please login again."
-         */
+        // ----------------------------------------------------
+        // 401 - SESSION EXPIRED
+        // ----------------------------------------------------
+
         if (status === 401) {
           setFaculty(null);
 
+          setError("Your session has expired. Please login again.");
+
+          // Navigate after giving the user a clear indication
+          // through the login page state.
           navigate("/login", {
             replace: true,
             state: {
@@ -340,13 +330,34 @@ const SingleFaculty = () => {
           return;
         }
 
+        // ----------------------------------------------------
+        // 403 - FORBIDDEN
+        // ----------------------------------------------------
+
         if (status === 403) {
-          setError(
-            "You are not authorized to view this faculty member.",
-          );
-        } else if (status === 404) {
+          setError("You are not authorized to view this faculty member.");
+        }
+
+        // ----------------------------------------------------
+        // 404 - NOT FOUND
+        // ----------------------------------------------------
+        else if (status === 404) {
           setError("Faculty record was not found.");
-        } else {
+        }
+
+        // ----------------------------------------------------
+        // NETWORK ERROR
+        // ----------------------------------------------------
+        else if (err?.code === "ERR_NETWORK") {
+          setError(
+            "Unable to connect to the backend server. Please make sure the backend is running.",
+          );
+        }
+
+        // ----------------------------------------------------
+        // OTHER ERROR
+        // ----------------------------------------------------
+        else {
           setError(
             err?.response?.data?.message ||
               err?.response?.data?.error ||
@@ -361,104 +372,100 @@ const SingleFaculty = () => {
         setRefreshing(false);
       }
     },
-    [api, id, token, navigate],
+    [api, id, getCurrentToken, navigate],
   );
 
-  // ============================================================
-  // INITIAL LOAD
-  // ============================================================
+  // ==========================================================
+  // INITIAL / ID / AUTH FETCH
+  //
+  // IMPORTANT:
+  //
+  // Wait until AuthContext has restored authentication.
+  //
+  // Then fetch automatically.
+  //
+  // This means:
+  //
+  // All Faculties
+  //      ↓
+  // View
+  //      ↓
+  // Single Faculty
+  //
+  // will automatically fetch without browser reload.
+  // ==========================================================
 
   useEffect(() => {
-    /*
-     * Do absolutely nothing while AuthContext is initializing.
-     */
     if (authLoading) {
+      setLoading(true);
       return;
     }
 
-    /*
-     * If AuthContext has finished initializing but no token
-     * exists, do not try the API.
-     */
-    if (!token) {
+    const currentToken = getCurrentToken();
+
+    if (!currentToken) {
       setLoading(false);
       setFaculty(null);
       setError("Authentication token not found. Please login again.");
       return;
     }
 
-    /*
-     * Wait until the API instance exists.
-     */
-    if (!api) {
+    if (!id) {
+      setLoading(false);
+      setFaculty(null);
+      setError("Faculty ID is missing.");
       return;
     }
 
-    /*
-     * Automatically fetch faculty.
-     *
-     * This is the important part:
-     * the page will fetch as soon as auth + api + id
-     * are available. No browser reload is required.
-     */
-    fetchFaculty();
-  }, [authLoading, token, api, fetchFaculty]);
+    fetchFaculty(false);
+  }, [authLoading, id, getCurrentToken, fetchFaculty]);
 
-  // ============================================================
-  // LOADING
-  // ============================================================
+  // ==========================================================
+  // LOADING SCREEN
+  // ==========================================================
 
-  if (loading || authLoading) {
+  if (authLoading || loading) {
     return (
-      <div className="min-h-screen w-full overflow-x-hidden bg-gray-50 px-3 py-5 sm:px-5 lg:px-8">
-        <div className="mx-auto w-full max-w-7xl">
-          <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
+      <div className="min-h-screen bg-gray-50 px-4 py-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="h-6 w-32 animate-pulse rounded bg-gray-200" />
 
-          <div className="mt-5 overflow-hidden rounded-2xl bg-white shadow-sm">
-            <div className="h-28 animate-pulse bg-gray-200 sm:h-36" />
+          <div className="mt-5 h-48 animate-pulse rounded-2xl bg-white shadow-sm" />
 
-            <div className="p-5 sm:p-7">
-              <div className="-mt-8 h-24 w-24 animate-pulse rounded-2xl bg-gray-300 sm:-mt-10 sm:h-28 sm:w-28" />
-
-              <div className="mt-5 h-7 w-64 animate-pulse rounded bg-gray-200" />
-
-              <div className="mt-3 h-4 w-40 animate-pulse rounded bg-gray-200" />
-
-              <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="h-24 animate-pulse rounded-2xl bg-gray-100"
-                  />
-                ))}
-              </div>
-            </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-24 animate-pulse rounded-2xl bg-white"
+              />
+            ))}
           </div>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
-            <div className="h-64 animate-pulse rounded-2xl bg-gray-200" />
-            <div className="h-64 animate-pulse rounded-2xl bg-gray-200" />
+            <div className="h-72 animate-pulse rounded-2xl bg-white" />
+
+            <div className="h-72 animate-pulse rounded-2xl bg-white" />
           </div>
         </div>
       </div>
     );
   }
 
-  // ============================================================
-  // ERROR
-  // ============================================================
+  // ==========================================================
+  // ERROR / NO FACULTY
+  // ==========================================================
 
-  if (error || !faculty) {
+  if (!faculty) {
     return (
-      <div className="min-h-screen overflow-x-hidden bg-gray-50 px-4 py-10">
-        <div className="mx-auto mt-10 w-full max-w-lg rounded-2xl border border-red-100 bg-white p-6 text-center shadow-sm sm:p-8">
+      <div className="min-h-screen bg-gray-50 px-4 py-10">
+        <div className="mx-auto max-w-lg rounded-2xl bg-white p-8 text-center shadow-sm">
           <FaTimesCircle className="mx-auto text-4xl text-red-500" />
 
           <h2 className="mt-4 text-xl font-bold text-gray-900">
             Unable to load faculty
           </h2>
 
-          <p className="mt-2 break-words text-sm leading-6 text-gray-500">
+          <p className="mt-2 text-sm text-gray-500">
             {error || "The requested faculty could not be found."}
           </p>
 
@@ -466,7 +473,7 @@ const SingleFaculty = () => {
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-bold text-gray-700 transition hover:bg-gray-50"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-5 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50"
             >
               <FaArrowLeft />
               Go Back
@@ -474,10 +481,14 @@ const SingleFaculty = () => {
 
             <button
               type="button"
-              onClick={() => fetchFaculty()}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-gray-700"
+              onClick={() => {
+                setError("");
+                fetchFaculty(false);
+              }}
+              disabled={loading || refreshing}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-3 text-sm font-bold text-white hover:bg-gray-700 disabled:opacity-50"
             >
-              <FaSyncAlt />
+              <FaRedo />
               Retry
             </button>
           </div>
@@ -486,148 +497,148 @@ const SingleFaculty = () => {
     );
   }
 
-  // ============================================================
-  // DATA
-  // ============================================================
+  // ==========================================================
+  // FACULTY DATA
+  // ==========================================================
 
   const user = getUser(faculty);
 
-  const image =
-    faculty?.profileImage ||
-    faculty?.profilePicture ||
-    user?.profileImage ||
-    user?.avatar ||
-    user?.avatarUrl ||
-    "";
+  const name = getName(faculty);
 
-  const subjects = getSubjects(faculty);
-  const classes = getClasses(faculty);
+  const email = value(faculty?.email, user?.email);
 
-  const facultyId = getFacultyId(faculty);
-  const facultyName = getName(faculty);
+  const phone = value(faculty?.phone, user?.phone);
 
-  // ============================================================
-  // ADDRESS DATA
-  // ============================================================
+  const address1 = value(faculty?.addressLine1, user?.addressLine1);
 
-  const addressLine1 = getAddressLine1(faculty);
-  const addressLine2 = getAddressLine2(faculty);
-  const city = getCity(faculty);
-  const state = getState(faculty);
-  const country = getCountry(faculty);
-  const postalCode = getPostalCode(faculty);
-  const nationality = getNationality(faculty);
-  const preferredCurrency = getPreferredCurrency(faculty);
+  const address2 = value(faculty?.addressLine2, user?.addressLine2);
 
-  // ============================================================
-  // PAGE
-  // ============================================================
+  const city = value(faculty?.city, user?.city);
+
+  const state = value(faculty?.state, user?.state);
+
+  const country = value(faculty?.country, user?.country);
+
+  const postalCode = value(
+    faculty?.postalCode,
+    faculty?.pincode,
+    faculty?.zipCode,
+    user?.postalCode,
+    user?.pincode,
+    user?.zipCode,
+  );
+
+  const nationality = value(faculty?.nationality, user?.nationality);
+
+  const currency = value(faculty?.preferredCurrency, user?.preferredCurrency);
+
+  const subjects = getArray(faculty, "subjects", "assignedSubjects");
+
+  const classes = getArray(faculty, "classes", "assignedClasses");
+
+  const facultyId = faculty?._id || faculty?.id || faculty?.facultyId || id;
+
+  const image = value(
+    faculty?.profileImage,
+    faculty?.profilePicture,
+    user?.profileImage,
+    user?.avatar,
+    user?.avatarUrl,
+  );
+
+  // ==========================================================
+  // UI
+  // ==========================================================
 
   return (
-    <div className="min-h-screen w-full overflow-x-hidden bg-gray-50">
-      <main className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
-
-        {/* ====================================================
+    <div className="min-h-screen overflow-x-hidden bg-gray-50">
+      <main className="mx-auto max-w-7xl px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
+        {/* ==================================================
             TOP ACTIONS
-        ==================================================== */}
+        ================================================== */}
 
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="inline-flex min-h-10 w-fit items-center gap-2 rounded-lg px-1 text-sm font-semibold text-gray-600 transition hover:text-gray-900"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-gray-900"
           >
             <FaArrowLeft />
-            <span>Back to All Faculties</span>
+            Back to All Faculties
           </button>
 
           <button
             type="button"
             onClick={() => fetchFaculty(true)}
             disabled={refreshing}
-            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
           >
-            <FaSyncAlt
-              className={refreshing ? "animate-spin" : ""}
-            />
+            <FaSyncAlt className={refreshing ? "animate-spin" : ""} />
 
             {refreshing ? "Refreshing..." : "Refresh"}
           </button>
         </div>
 
-        {/* ====================================================
-            PROFILE HEADER
-        ==================================================== */}
+        {/* ==================================================
+            HEADER
+        ================================================== */}
 
         <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <div className="h-20 bg-gray-900 sm:h-24 lg:h-28" />
+          <div className="h-24 bg-gray-900" />
 
-          <div className="px-4 pb-5 sm:px-6 sm:pb-6 lg:px-8">
-            <div className="relative">
-              <div className="flex min-w-0 flex-col gap-4 pt-4 sm:flex-row sm:items-center sm:gap-5 sm:pt-5 lg:gap-6">
-
-                {/* IMAGE */}
-
-                <div className="shrink-0">
-                  {image ? (
-                    <img
-                      src={image}
-                      alt={facultyName}
-                      className="h-20 w-20 rounded-2xl border-4 border-white bg-gray-100 object-cover shadow-md sm:h-24 sm:w-24 lg:h-28 lg:w-28"
-                      onError={(event) => {
-                        event.currentTarget.style.display = "none";
-                      }}
-                    />
-                  ) : (
-                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl border-4 border-white bg-gray-700 text-2xl font-bold text-white shadow-md sm:h-24 sm:w-24 sm:text-3xl lg:h-28 lg:w-28 lg:text-4xl">
-                      {facultyName.charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                </div>
-
-                {/* FACULTY INFORMATION */}
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <h1 className="min-w-0 break-words text-xl font-bold leading-tight text-gray-900 sm:text-2xl lg:text-3xl">
-                      {facultyName}
-                    </h1>
-
-                    <StatusBadge status={getStatus(faculty)} />
-                  </div>
-
-                  <p className="mt-1 break-words text-sm font-semibold text-gray-600 sm:text-base">
-                    {getDesignation(faculty)}
-                  </p>
-
-                  <p className="mt-1 break-words text-xs text-gray-400 sm:text-sm">
-                    {getDepartment(faculty)}
-                  </p>
-                </div>
-
-                {/* EDIT */}
-
-                {facultyId && (
-                  <div className="w-full shrink-0 sm:w-auto">
-                    <Link
-                      to={`/update-faculty/${facultyId}`}
-                      className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-gray-700 sm:w-auto"
-                    >
-                      <FaEdit />
-                      Edit Faculty
-                    </Link>
+          <div className="px-4 pb-6 sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-4 pt-4 sm:flex-row sm:items-center">
+              <div className="shrink-0">
+                {image ? (
+                  <img
+                    src={image}
+                    alt={name}
+                    className="h-24 w-24 rounded-2xl border-4 border-white bg-gray-100 object-cover shadow-md"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="flex h-24 w-24 items-center justify-center rounded-2xl border-4 border-white bg-gray-700 text-3xl font-bold text-white shadow-md">
+                    {name.charAt(0).toUpperCase()}
                   </div>
                 )}
               </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="break-words text-2xl font-bold text-gray-900">
+                    {name}
+                  </h1>
+
+                  <StatusBadge status={getStatus(faculty)} />
+                </div>
+
+                <p className="mt-1 text-sm font-semibold text-gray-600 sm:text-base">
+                  {getDesignation(faculty)}
+                </p>
+
+                <p className="mt-1 text-sm text-gray-400">
+                  {getDepartment(faculty)}
+                </p>
+              </div>
+
+              <Link
+                to={`/update-faculty/${facultyId}`}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-700"
+              >
+                <FaEdit />
+                Edit Faculty
+              </Link>
             </div>
           </div>
         </section>
 
-        {/* ====================================================
+        {/* ==================================================
             SUMMARY
-        ==================================================== */}
+        ================================================== */}
 
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <SummaryCard
             icon={<FaBook />}
             title="Subjects"
@@ -653,17 +664,13 @@ const SingleFaculty = () => {
           />
         </div>
 
-        {/* ====================================================
+        {/* ==================================================
             PERSONAL INFORMATION
-        ==================================================== */}
+        ================================================== */}
 
         <Section title="Personal Information">
-          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <DetailItem
-              icon={<FaUserTie />}
-              label="Full Name"
-              value={facultyName}
-            />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <DetailItem icon={<FaUserTie />} label="Full Name" value={name} />
 
             <DetailItem
               icon={<FaIdBadge />}
@@ -686,25 +693,21 @@ const SingleFaculty = () => {
             <DetailItem
               icon={<FaEnvelope />}
               label="Email"
-              value={getEmail(faculty) || "—"}
+              value={email || "—"}
             />
 
-            <DetailItem
-              icon={<FaPhone />}
-              label="Phone"
-              value={getPhone(faculty) || "—"}
-            />
+            <DetailItem icon={<FaPhone />} label="Phone" value={phone || "—"} />
 
             <DetailItem
               icon={<FaCalendarAlt />}
               label="Date of Birth"
-              value={formatDate(faculty?.dateOfBirth)}
+              value={formatDate(faculty?.dateOfBirth || user?.dateOfBirth)}
             />
 
             <DetailItem
               icon={<FaUserTie />}
               label="Gender"
-              value={faculty?.gender || user?.gender || "—"}
+              value={value(faculty?.gender, user?.gender) || "—"}
             />
 
             <DetailItem
@@ -733,34 +736,30 @@ const SingleFaculty = () => {
           </div>
         </Section>
 
-        {/* ====================================================
-            CONTACT & ADDRESS
-        ==================================================== */}
+        {/* ==================================================
+            CONTACT
+        ================================================== */}
 
         <Section title="Contact & Address">
-          <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             <DetailItem
               icon={<FaEnvelope />}
               label="Email"
-              value={getEmail(faculty) || "—"}
+              value={email || "—"}
             />
 
-            <DetailItem
-              icon={<FaPhone />}
-              label="Phone"
-              value={getPhone(faculty) || "—"}
-            />
+            <DetailItem icon={<FaPhone />} label="Phone" value={phone || "—"} />
 
             <DetailItem
               icon={<FaBuilding />}
               label="Address"
-              value={addressLine1 || "—"}
+              value={address1 || "—"}
             />
 
             <DetailItem
               icon={<FaBuilding />}
               label="Address Line 2"
-              value={addressLine2 || "—"}
+              value={address2 || "—"}
             />
 
             <DetailItem
@@ -796,135 +795,105 @@ const SingleFaculty = () => {
             <DetailItem
               icon={<FaBuilding />}
               label="Preferred Currency"
-              value={preferredCurrency || "—"}
+              value={currency || "—"}
             />
           </div>
         </Section>
 
-        {/* ====================================================
+        {/* ==================================================
             SUBJECTS
-        ==================================================== */}
+        ================================================== */}
 
         <Section title={`Subjects (${subjects.length})`}>
-          {subjects.length > 0 ? (
-            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {subjects.length ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {subjects.map((subject, index) => {
                 const subjectName =
                   typeof subject === "string"
                     ? subject
-                    : subject?.name ||
-                      subject?.subjectName ||
-                      subject?.title ||
-                      subject?.code ||
-                      `Subject ${index + 1}`;
+                    : value(
+                        subject?.name,
+                        subject?.subjectName,
+                        subject?.title,
+                        subject?.code,
+                        `Subject ${index + 1}`,
+                      );
 
                 return (
-                  <div
+                  <Card
                     key={subject?._id || subject?.id || index}
-                    className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="shrink-0 rounded-xl bg-white p-3 text-gray-700 shadow-sm">
-                        <FaGraduationCap />
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="break-words font-bold text-gray-900">
-                          {subjectName}
-                        </p>
-
-                        {typeof subject === "object" &&
-                          subject?.code && (
-                            <p className="mt-1 break-words text-xs text-gray-500">
-                              {subject.code}
-                            </p>
-                          )}
-                      </div>
-                    </div>
-                  </div>
+                    icon={<FaGraduationCap />}
+                    title={subjectName}
+                    subtitle={typeof subject === "object" ? subject?.code : ""}
+                  />
                 );
               })}
             </div>
           ) : (
-            <EmptySection text="No subjects assigned." />
+            <Empty text="No subjects assigned." />
           )}
         </Section>
 
-        {/* ====================================================
+        {/* ==================================================
             CLASSES
-        ==================================================== */}
+        ================================================== */}
 
         <Section title={`Classes (${classes.length})`}>
-          {classes.length > 0 ? (
-            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {classes.map((classItem, index) => {
+          {classes.length ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {classes.map((item, index) => {
                 const className =
-                  typeof classItem === "string"
-                    ? classItem
-                    : classItem?.name ||
-                      classItem?.className ||
-                      classItem?.section ||
-                      classItem?.title ||
-                      `Class ${index + 1}`;
+                  typeof item === "string"
+                    ? item
+                    : value(
+                        item?.name,
+                        item?.className,
+                        item?.section,
+                        item?.title,
+                        `Class ${index + 1}`,
+                      );
 
                 return (
-                  <div
-                    key={classItem?._id || classItem?.id || index}
-                    className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50 p-4"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="shrink-0 rounded-xl bg-white p-3 text-gray-700 shadow-sm">
-                        <FaChalkboardTeacher />
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="break-words font-bold text-gray-900">
-                          {className}
-                        </p>
-
-                        {typeof classItem === "object" &&
-                          classItem?.section &&
-                          classItem?.name && (
-                            <p className="mt-1 break-words text-xs text-gray-500">
-                              Section: {classItem.section}
-                            </p>
-                          )}
-                      </div>
-                    </div>
-                  </div>
+                  <Card
+                    key={item?._id || item?.id || index}
+                    icon={<FaChalkboardTeacher />}
+                    title={className}
+                    subtitle={
+                      typeof item === "object" && item?.section
+                        ? `Section: ${item.section}`
+                        : ""
+                    }
+                  />
                 );
               })}
             </div>
           ) : (
-            <EmptySection text="No classes assigned." />
+            <Empty text="No classes assigned." />
           )}
         </Section>
 
-        {/* ====================================================
-            FACULTY MANAGEMENT
-        ==================================================== */}
+        {/* ==================================================
+            MANAGEMENT
+        ================================================== */}
 
         <Section title="Faculty Management">
-          <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-3">
             <ManagementCard
               icon={<FaClock />}
               title="Timetable"
               description="View complete faculty timetable."
-              disabled
             />
 
             <ManagementCard
               icon={<FaCheckCircle />}
               title="Attendance"
               description="View faculty attendance records."
-              disabled
             />
 
             <ManagementCard
               icon={<FaChalkboardTeacher />}
               title="Class Management"
               description="Manage assigned classes."
-              disabled
             />
           </div>
         </Section>
@@ -933,139 +902,130 @@ const SingleFaculty = () => {
   );
 };
 
-// ============================================================
+// ==========================================================
 // SECTION
-// ============================================================
+// ==========================================================
 
-const Section = ({ title, children }) => {
-  return (
-    <section className="mt-4 min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-      <h2 className="mb-4 break-words text-lg font-bold text-gray-900 sm:text-xl">
-        {title}
-      </h2>
+const Section = ({ title, children }) => (
+  <section className="mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+    <h2 className="mb-4 text-lg font-bold text-gray-900 sm:text-xl">{title}</h2>
 
-      {children}
-    </section>
-  );
-};
+    {children}
+  </section>
+);
 
-// ============================================================
-// DETAIL
-// ============================================================
+// ==========================================================
+// DETAIL ITEM
+// ==========================================================
 
-const DetailItem = ({ icon, label, value }) => {
-  return (
-    <div className="min-w-0 overflow-hidden rounded-2xl bg-gray-50 p-4">
-      <div className="flex min-w-0 items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 sm:text-xs">
-        <span className="shrink-0">{icon}</span>
-        <span className="truncate">{label}</span>
-      </div>
+const DetailItem = ({ icon, label, value }) => (
+  <div className="rounded-2xl bg-gray-50 p-4">
+    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-gray-400">
+      {icon}
 
-      <p className="mt-2 break-words text-sm font-semibold leading-6 text-gray-800">
-        {value}
-      </p>
+      {label}
     </div>
-  );
-};
 
-// ============================================================
-// SUMMARY
-// ============================================================
+    <p className="mt-2 break-words text-sm font-semibold leading-6 text-gray-800">
+      {value}
+    </p>
+  </div>
+);
 
-const SummaryCard = ({ icon, title, value }) => {
-  return (
-    <div className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-5">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="shrink-0 rounded-xl bg-gray-100 p-2.5 text-gray-700 sm:p-3">
-          {icon}
-        </div>
+// ==========================================================
+// SUMMARY CARD
+// ==========================================================
 
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[10px] font-bold uppercase tracking-wide text-gray-400 sm:text-xs">
-            {title}
-          </p>
+const SummaryCard = ({ icon, title, value }) => (
+  <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="flex items-center gap-3">
+      <div className="rounded-xl bg-gray-100 p-3 text-gray-700">{icon}</div>
 
-          <p className="mt-1 break-words text-base font-bold leading-5 text-gray-900 sm:text-lg">
-            {value}
-          </p>
-        </div>
+      <div className="min-w-0">
+        <p className="text-xs font-bold uppercase text-gray-400">{title}</p>
+
+        <p className="mt-1 break-words text-lg font-bold text-gray-900">
+          {value}
+        </p>
       </div>
     </div>
-  );
-};
+  </div>
+);
 
-// ============================================================
-// STATUS
-// ============================================================
+// ==========================================================
+// STATUS BADGE
+// ==========================================================
 
 const StatusBadge = ({ status }) => {
   const active = status === "active";
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold capitalize sm:px-3 sm:text-xs ${
-        active
-          ? "bg-green-50 text-green-700"
-          : "bg-red-50 text-red-700"
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold capitalize ${
+        active ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
       }`}
     >
       {active ? <FaCheckCircle /> : <FaTimesCircle />}
+
       {status}
     </span>
   );
 };
 
-// ============================================================
-// MANAGEMENT CARD
-// ============================================================
+// ==========================================================
+// CARD
+// ==========================================================
 
-const ManagementCard = ({
-  icon,
-  title,
-  description,
-  disabled,
-}) => {
-  return (
-    <div
-      className={`min-w-0 rounded-2xl border border-gray-200 p-4 sm:p-5 ${
-        disabled ? "bg-gray-50 opacity-70" : "bg-white"
-      }`}
-    >
-      <div className="flex min-w-0 items-start gap-3 sm:gap-4">
-        <div className="shrink-0 rounded-xl bg-white p-3 text-gray-700 shadow-sm">
-          {icon}
-        </div>
+const Card = ({ icon, title, subtitle }) => (
+  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+    <div className="flex items-center gap-3">
+      <div className="rounded-xl bg-white p-3 text-gray-700 shadow-sm">
+        {icon}
+      </div>
 
-        <div className="min-w-0">
-          <h3 className="break-words font-bold text-gray-900">
-            {title}
-          </h3>
+      <div className="min-w-0">
+        <p className="break-words font-bold text-gray-900">{title}</p>
 
-          <p className="mt-1 break-words text-sm leading-6 text-gray-500">
-            {description}
-          </p>
-
-          {disabled && (
-            <span className="mt-2 inline-block text-xs font-bold text-gray-400">
-              Coming soon
-            </span>
-          )}
-        </div>
+        {subtitle && (
+          <p className="mt-1 break-words text-xs text-gray-500">{subtitle}</p>
+        )}
       </div>
     </div>
-  );
-};
+  </div>
+);
 
-// ============================================================
-// EMPTY
-// ============================================================
+// ==========================================================
+// MANAGEMENT CARD
+// ==========================================================
 
-const EmptySection = ({ text }) => {
-  return (
-    <div className="rounded-2xl bg-gray-50 p-6 text-center text-sm text-gray-500 sm:p-8">
-      {text}
+const ManagementCard = ({ icon, title, description }) => (
+  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 opacity-70">
+    <div className="flex items-start gap-4">
+      <div className="rounded-xl bg-white p-3 text-gray-700 shadow-sm">
+        {icon}
+      </div>
+
+      <div>
+        <h3 className="font-bold text-gray-900">{title}</h3>
+
+        <p className="mt-1 text-sm leading-6 text-gray-500">{description}</p>
+
+        <span className="mt-2 inline-block text-xs font-bold text-gray-400">
+          Coming soon
+        </span>
+      </div>
     </div>
-  );
-};
+  </div>
+);
+
+// ==========================================================
+// EMPTY
+// ==========================================================
+
+const Empty = ({ text }) => (
+  <div className="rounded-2xl bg-gray-50 p-8 text-center text-sm text-gray-500">
+    {text}
+  </div>
+);
 
 export default SingleFaculty;

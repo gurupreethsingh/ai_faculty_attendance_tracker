@@ -1,39 +1,23 @@
-const crypto = require("crypto");
-const jwt = require("jsonwebtoken");
-const mongoose = require("mongoose");
 const User = require("../models/UserModel");
+const crypto = require("crypto");
 
-// =====================================================
-// JWT CONFIGURATION
-// =====================================================
+// HELPER FUNCTIONS
 
-const ACCESS_TOKEN_SECRET =
-  process.env.JWT_SECRET || "dev_access_secret_change_me";
+const sanitizeUser = (user) => {
+  if (!user) return null;
 
-const REFRESH_TOKEN_SECRET =
-  process.env.JWT_REFRESH_SECRET || "dev_refresh_secret_change_me";
+  const userObj = user.toObject ? user.toObject() : { ...user };
 
-const ACCESS_TOKEN_EXPIRE = process.env.JWT_ACCESS_EXPIRE || "15m";
+  delete userObj.password;
+  delete userObj.resetPasswordToken;
+  delete userObj.resetPasswordExpire;
 
-const REFRESH_TOKEN_EXPIRE = process.env.JWT_REFRESH_EXPIRE || "7d";
-
-// =====================================================
-// HELPERS
-// =====================================================
-
-const normalizeEmail = (email = "") => {
-  return String(email).trim().toLowerCase();
+  return userObj;
 };
 
-const normalizeText = (value = "") => {
-  return String(value).trim();
-};
+// VALIDATION HELPERS
 
-// =====================================================
-// ALLOWED ROLES
-// =====================================================
-
-const ALLOWED_ROLES = [
+const allowedRoles = [
   "superadmin",
   "admin",
   "faculty",
@@ -49,102 +33,56 @@ const ALLOWED_ROLES = [
   "user",
 ];
 
-// =====================================================
-// SAFE USER RESPONSE
-// =====================================================
-
-const buildUserResponse = (user) => ({
-  _id: user._id,
-  fullName: user.fullName,
-  email: user.email,
-  role: user.role,
-  phone: user.phone,
-  dateOfBirth: user.dateOfBirth,
-  gender: user.gender,
-  addressLine1: user.addressLine1,
-  addressLine2: user.addressLine2,
-  city: user.city,
-  state: user.state,
-  country: user.country,
-  postalCode: user.postalCode,
-  nationality: user.nationality,
-  preferredCurrency: user.preferredCurrency,
-  profileImage: user.profileImage,
-});
-
-// =====================================================
-// ACCESS TOKEN
-// =====================================================
-
-const createAccessToken = (user) => {
-  return jwt.sign(
-    {
-      id: user._id,
-      role: user.role,
-    },
-    ACCESS_TOKEN_SECRET,
-    {
-      expiresIn: ACCESS_TOKEN_EXPIRE,
-    },
-  );
+const isValidRole = (role) => {
+  return allowedRoles.includes(role);
 };
 
-// =====================================================
-// REFRESH TOKEN
-// =====================================================
+const parseBoolean = (value) => {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
 
-const createRefreshToken = (user) => {
-  return jwt.sign(
-    {
-      id: user._id,
-    },
-    REFRESH_TOKEN_SECRET,
-    {
-      expiresIn: REFRESH_TOKEN_EXPIRE,
-    },
-  );
+  if (value === true || value === "true" || value === "1") {
+    return true;
+  }
+
+  if (value === false || value === "false" || value === "0") {
+    return false;
+  }
+
+  return undefined;
 };
 
-// =====================================================
-// COOKIE OPTIONS
-// =====================================================
-
-const getRefreshCookieOptions = () => ({
-  httpOnly: true,
-  secure: false,
-  sameSite: "lax",
-  path: "/api/users",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-});
-
-// =====================================================
-// AUTH RESPONSE
-// =====================================================
-
-const sendAuthResponse = (user, statusCode, res, message) => {
-  const accessToken = createAccessToken(user);
-
-  const refreshToken = createRefreshToken(user);
-
-  res.cookie("refreshToken", refreshToken, getRefreshCookieOptions());
-
-  return res.status(statusCode).json({
-    success: true,
-    message,
-    token: accessToken,
-    user: buildUserResponse(user),
-  });
+const escapeRegex = (value) => {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
 
-// =====================================================
 // REGISTER USER
-// =====================================================
 
 exports.registerUser = async (req, res) => {
   try {
-    const fullName = normalizeText(req.body.fullName);
-    const email = normalizeEmail(req.body.email);
-    const password = String(req.body.password || "");
+    const {
+      fullName,
+      email,
+      password,
+      role,
+      phone,
+      dateOfBirth,
+      gender,
+      addressLine1,
+      addressLine2,
+      city,
+      state,
+      country,
+      postalCode,
+      nationality,
+      preferredCurrency,
+      profileImage,
+    } = req.body;
+
+    // -----------------------------------------------
+    // REQUIRED FIELDS
+    // -----------------------------------------------
 
     if (!fullName || !email || !password) {
       return res.status(400).json({
@@ -153,43 +91,109 @@ exports.registerUser = async (req, res) => {
       });
     }
 
+    // -----------------------------------------------
+    // NORMALIZE EMAIL
+    // -----------------------------------------------
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // -----------------------------------------------
+    // CHECK EXISTING USER
+    // -----------------------------------------------
+
     const existingUser = await User.findOne({
-      email,
-    });
+      email: normalizedEmail,
+    }).select("+password");
 
     if (existingUser) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
-        message: "User already exists with this email.",
+        message: "A user with this email already exists.",
       });
     }
 
+    // -----------------------------------------------
+    // PUBLIC REGISTRATION ROLE
+    // -----------------------------------------------
+
+    /*
+     * Prevent public registration from creating
+     * privileged accounts.
+     *
+     * Public registration creates a normal user
+     * unless your application explicitly permits
+     * another role.
+     */
+
+    const userRole = role && isValidRole(role) ? role : "user";
+
+    // -----------------------------------------------
+    // CREATE USER
+    // -----------------------------------------------
+
     const user = await User.create({
-      fullName,
-      email,
+      fullName: String(fullName).trim(),
+      email: normalizedEmail,
       password,
-      role: "user",
+      role: userRole,
+      phone: phone || "",
+      dateOfBirth: dateOfBirth || null,
+      gender: gender || "",
+      addressLine1: addressLine1 || "",
+      addressLine2: addressLine2 || "",
+      city: city || "",
+      state: state || "",
+      country: country || "",
+      postalCode: postalCode || "",
+      nationality: nationality || "",
+      preferredCurrency: preferredCurrency || "INR",
+      profileImage: profileImage || "",
     });
 
-    return sendAuthResponse(user, 201, res, "User registered successfully.");
+    // -----------------------------------------------
+    // JWT
+    // -----------------------------------------------
+
+    const token = user.getJwtToken();
+
+    return res.status(201).json({
+      success: true,
+      message: "User registered successfully.",
+      token,
+      user: sanitizeUser(user),
+    });
   } catch (error) {
-    console.error("REGISTER USER ERROR:", error);
+    console.error("registerUser error:", error);
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Email already exists.",
+      });
+    }
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: Object.values(error.errors)
+          .map((err) => err.message)
+          .join(", "),
+      });
+    }
 
     return res.status(500).json({
       success: false,
-      message: error.message || "Registration failed.",
+      message: "Failed to register user.",
+      error: error.message,
     });
   }
 };
 
-// =====================================================
 // LOGIN USER
-// =====================================================
 
 exports.loginUser = async (req, res) => {
   try {
-    const email = normalizeEmail(req.body.email);
-    const password = String(req.body.password || "");
+    const { email, password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -198,8 +202,11 @@ exports.loginUser = async (req, res) => {
       });
     }
 
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // password has select:false, therefore explicitly select it
     const user = await User.findOne({
-      email,
+      email: normalizedEmail,
     }).select("+password");
 
     if (!user) {
@@ -209,88 +216,151 @@ exports.loginUser = async (req, res) => {
       });
     }
 
-    const isMatch = await user.comparePassword(password);
+    // -----------------------------------------------
+    // ACCOUNT STATUS
+    // -----------------------------------------------
 
-    if (!isMatch) {
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is inactive. Please contact the administrator.",
+      });
+    }
+
+    // -----------------------------------------------
+    // PASSWORD
+    // -----------------------------------------------
+
+    const passwordMatch = await user.comparePassword(password);
+
+    if (!passwordMatch) {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password.",
       });
     }
 
-    return sendAuthResponse(user, 200, res, "Login successful.");
+    // -----------------------------------------------
+    // JWT
+    // -----------------------------------------------
+
+    const token = user.getJwtToken();
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful.",
+      token,
+      user: sanitizeUser(user),
+    });
   } catch (error) {
-    console.error("LOGIN USER ERROR:", error);
+    console.error("loginUser error:", error);
 
     return res.status(500).json({
       success: false,
-      message: error.message || "Login failed.",
+      message: "Login failed.",
+      error: error.message,
     });
   }
 };
 
-// =====================================================
 // REFRESH TOKEN
-// =====================================================
 
 exports.refreshToken = async (req, res) => {
   try {
-    const refreshToken = req.cookies?.refreshToken;
+    /*
+     * Your current UserModel generates access JWTs.
+     *
+     * If you later add refresh-token storage,
+     * this function can be upgraded to a true
+     * refresh-token implementation.
+     */
 
-    if (!refreshToken) {
+    const { token } = req.body;
+
+    if (!token) {
       return res.status(401).json({
         success: false,
-        message: "Refresh token missing.",
+        message: "Refresh token is required.",
       });
     }
 
-    const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
+    const jwt = require("jsonwebtoken");
+
+    const secret = process.env.JWT_SECRET;
+
+    if (!secret) {
+      return res.status(500).json({
+        success: false,
+        message: "JWT_SECRET is not configured.",
+      });
+    }
+
+    let decoded;
+
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired token.",
+      });
+    }
 
     const user = await User.findById(decoded.id);
 
     if (!user) {
-      return res.status(401).json({
+      return res.status(404).json({
         success: false,
         message: "User not found.",
       });
     }
 
-    const accessToken = createAccessToken(user);
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "User account is inactive.",
+      });
+    }
+
+    const newToken = user.getJwtToken();
 
     return res.status(200).json({
       success: true,
-      token: accessToken,
-      user: buildUserResponse(user),
+      message: "Token refreshed successfully.",
+      token: newToken,
+      user: sanitizeUser(user),
     });
   } catch (error) {
-    console.error("REFRESH TOKEN ERROR:", error);
+    console.error("refreshToken error:", error);
 
-    return res.status(401).json({
+    return res.status(500).json({
       success: false,
-      message: "Invalid or expired refresh token.",
+      message: "Failed to refresh token.",
+      error: error.message,
     });
   }
 };
 
-// =====================================================
 // LOGOUT
-// =====================================================
 
-exports.logoutUser = async (_req, res) => {
+exports.logoutUser = async (req, res) => {
   try {
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      path: "/api/users",
-    });
+    /*
+     * JWT is stateless.
+     *
+     * Actual token removal should happen on the
+     * frontend by deleting the stored token.
+     *
+     * This endpoint exists so the frontend can
+     * consistently call /logout.
+     */
 
     return res.status(200).json({
       success: true,
-      message: "Logged out successfully.",
+      message: "Logout successful. Please remove the token from the client.",
     });
   } catch (error) {
-    console.error("LOGOUT USER ERROR:", error);
+    console.error("logoutUser error:", error);
 
     return res.status(500).json({
       success: false,
@@ -299,110 +369,7 @@ exports.logoutUser = async (_req, res) => {
   }
 };
 
-// =====================================================
-// FORGOT PASSWORD
-// =====================================================
-
-exports.forgotPassword = async (req, res) => {
-  try {
-    const email = normalizeEmail(req.body.email);
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: "Email is required.",
-      });
-    }
-
-    const user = await User.findOne({
-      email,
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "No user found with this email.",
-      });
-    }
-
-    const resetToken = user.getResetPasswordToken();
-
-    await user.save({
-      validateBeforeSave: false,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Email matched. You can now reset your password.",
-      resetToken,
-    });
-  } catch (error) {
-    console.error("FORGOT PASSWORD ERROR:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Forgot password failed.",
-    });
-  }
-};
-
-// =====================================================
-// RESET PASSWORD
-// =====================================================
-
-exports.resetPassword = async (req, res) => {
-  try {
-    const password = String(req.body.password || "");
-
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        message: "New password is required.",
-      });
-    }
-
-    const resetPasswordToken = crypto
-      .createHash("sha256")
-      .update(req.params.token)
-      .digest("hex");
-
-    const user = await User.findOne({
-      resetPasswordToken,
-      resetPasswordExpire: {
-        $gt: Date.now(),
-      },
-    }).select("+password");
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: "Reset token is invalid or expired.",
-      });
-    }
-
-    user.password = password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
-
-    await user.save();
-
-    return res.status(200).json({
-      success: true,
-      message: "Password reset successful.",
-    });
-  } catch (error) {
-    console.error("RESET PASSWORD ERROR:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Reset password failed.",
-    });
-  }
-};
-
-// =====================================================
 // GET MY PROFILE
-// =====================================================
 
 exports.getMyProfile = async (req, res) => {
   try {
@@ -411,7 +378,7 @@ exports.getMyProfile = async (req, res) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Authenticated user ID not found.",
+        message: "Authentication required.",
       });
     }
 
@@ -426,21 +393,20 @@ exports.getMyProfile = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      user: buildUserResponse(user),
+      user: sanitizeUser(user),
     });
   } catch (error) {
-    console.error("GET PROFILE ERROR:", error);
+    console.error("getMyProfile error:", error);
 
     return res.status(500).json({
       success: false,
-      message: error.message || "Unable to fetch profile.",
+      message: "Failed to fetch profile.",
+      error: error.message,
     });
   }
 };
 
-// =====================================================
 // UPDATE MY PROFILE
-// =====================================================
 
 exports.updateMyProfile = async (req, res) => {
   try {
@@ -449,36 +415,71 @@ exports.updateMyProfile = async (req, res) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Authenticated user ID not found.",
+        message: "Authentication required.",
       });
     }
 
-    const updateData = {
-      fullName: req.body.fullName,
-      phone: req.body.phone,
-      dateOfBirth: req.body.dateOfBirth || null,
-      gender: req.body.gender,
-      addressLine1: req.body.addressLine1,
-      addressLine2: req.body.addressLine2,
-      city: req.body.city,
-      state: req.body.state,
-      country: req.body.country,
-      postalCode: req.body.postalCode,
-      nationality: req.body.nationality,
-      preferredCurrency: req.body.preferredCurrency,
-      profileImage: req.body.profileImage,
-    };
+    const allowedFields = [
+      "fullName",
+      "phone",
+      "dateOfBirth",
+      "gender",
+      "addressLine1",
+      "addressLine2",
+      "city",
+      "state",
+      "country",
+      "postalCode",
+      "nationality",
+      "preferredCurrency",
+      "profileImage",
+    ];
 
-    Object.keys(updateData).forEach((key) => {
-      if (updateData[key] === undefined) {
-        delete updateData[key];
+    const updates = {};
+
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
       }
-    });
+    }
 
-    const user = await User.findByIdAndUpdate(userId, updateData, {
-      new: true,
-      runValidators: true,
-    });
+    // -----------------------------------------------
+    // EMAIL
+    // -----------------------------------------------
+
+    if (req.body.email !== undefined) {
+      const email = String(req.body.email).trim().toLowerCase();
+
+      const existingUser = await User.findOne({
+        email,
+        _id: { $ne: userId },
+      });
+
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          message: "Another user already uses this email.",
+        });
+      }
+
+      updates.email = email;
+    }
+
+    // -----------------------------------------------
+    // DO NOT ALLOW ROLE / STATUS CHANGES HERE
+    // -----------------------------------------------
+
+    delete updates.role;
+    delete updates.isActive;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $set: updates },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
 
     if (!user) {
       return res.status(404).json({
@@ -490,81 +491,714 @@ exports.updateMyProfile = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Profile updated successfully.",
-      user: buildUserResponse(user),
+      user: sanitizeUser(user),
     });
   } catch (error) {
-    console.error("UPDATE PROFILE ERROR:", error);
+    console.error("updateMyProfile error:", error);
 
     return res.status(500).json({
       success: false,
-      message: error.message || "Unable to update profile.",
+      message: "Failed to update profile.",
+      error: error.message,
     });
   }
 };
 
-// =====================================================
-// GET ALL USERS
-// =====================================================
+// CHANGE PASSWORD
 
-exports.getAllUsers = async (_req, res) => {
+exports.changePassword = async (req, res) => {
   try {
-    const users = await User.find()
-      .select("-password")
-      .sort({
-        createdAt: -1,
-      })
-      .lean();
+    const userId = req.user?._id || req.user?.id;
+
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password and new password are required.",
+      });
+    }
+
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 6 characters.",
+      });
+    }
+
+    const user = await User.findById(userId).select("+password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    const valid = await user.comparePassword(currentPassword);
+
+    if (!valid) {
+      return res.status(401).json({
+        success: false,
+        message: "Current password is incorrect.",
+      });
+    }
+
+    user.password = newPassword;
+
+    await user.save();
 
     return res.status(200).json({
       success: true,
-      users,
+      message: "Password changed successfully.",
     });
   } catch (error) {
-    console.error("GET ALL USERS ERROR:", error);
+    console.error("changePassword error:", error);
 
     return res.status(500).json({
       success: false,
-      message: error.message || "Unable to fetch users.",
+      message: "Failed to change password.",
+      error: error.message,
     });
   }
 };
 
-// =====================================================
-// UPDATE USER ROLE
-// =====================================================
+// FORGOT PASSWORD
 
-exports.updateUserRole = async (req, res) => {
+exports.forgotPassword = async (req, res) => {
   try {
-    const userId = req.params.id;
+    const { email } = req.body;
 
-    const role = normalizeText(req.body.role).toLowerCase();
-
-    if (!role) {
+    if (!email) {
       return res.status(400).json({
         success: false,
-        message: "Role is required.",
+        message: "Email is required.",
       });
     }
 
-    if (!ALLOWED_ROLES.includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid role: ${role}`,
-        allowedRoles: ALLOWED_ROLES,
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const user = await User.findOne({
+      email: normalizedEmail,
+    }).select("+resetPasswordToken +resetPasswordExpire");
+
+    /*
+     * Do not reveal whether an email exists.
+     */
+
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message:
+          "If an account exists with this email, password reset instructions have been generated.",
       });
     }
 
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
+    const resetToken = user.getResetPasswordToken();
+
+    await user.save({ validateBeforeSave: false });
+
+    /*
+     * In production, send resetToken through email.
+     *
+     * DO NOT expose this token in production responses.
+     *
+     * For development, you may enable:
+     *
+     * process.env.NODE_ENV === "development"
+     */
+
+    const response = {
+      success: true,
+      message:
+        "If an account exists with this email, password reset instructions have been generated.",
+    };
+
+    if (process.env.NODE_ENV === "development") {
+      response.resetToken = resetToken;
+    }
+
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error("forgotPassword error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to process forgot password request.",
+      error: error.message,
+    });
+  }
+};
+
+// RESET PASSWORD
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password, confirmPassword } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset token is required.",
+      });
+    }
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: "New password is required.",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters.",
+      });
+    }
+
+    if (confirmPassword !== undefined && password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Passwords do not match.",
+      });
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: {
+        $gt: Date.now(),
+      },
+    }).select("+resetPasswordToken +resetPasswordExpire");
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired password reset token.",
+      });
+    }
+
+    user.password = password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully.",
+    });
+  } catch (error) {
+    console.error("resetPassword error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to reset password.",
+      error: error.message,
+    });
+  }
+};
+
+// GET USER BY ID
+
+exports.getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || !require("mongoose").isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
         message: "Invalid user ID.",
       });
     }
 
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      user: sanitizeUser(user),
+    });
+  } catch (error) {
+    console.error("getUserById error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch user.",
+      error: error.message,
+    });
+  }
+};
+
+// CREATE USER - ADMIN
+
+exports.createUser = async (req, res) => {
+  try {
+    const {
+      fullName,
+      email,
+      password,
+      role,
+      isActive,
+      phone,
+      dateOfBirth,
+      gender,
+      addressLine1,
+      addressLine2,
+      city,
+      state,
+      country,
+      postalCode,
+      nationality,
+      preferredCurrency,
+      profileImage,
+    } = req.body;
+
+    if (!fullName || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Full name, email and password are required.",
+      });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "A user with this email already exists.",
+      });
+    }
+
+    if (role && !isValidRole(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user role.",
+      });
+    }
+
+    const user = await User.create({
+      fullName: String(fullName).trim(),
+      email: normalizedEmail,
+      password,
+      role: role || "user",
+      isActive: typeof isActive === "boolean" ? isActive : true,
+      phone: phone || "",
+      dateOfBirth: dateOfBirth || null,
+      gender: gender || "",
+      addressLine1: addressLine1 || "",
+      addressLine2: addressLine2 || "",
+      city: city || "",
+      state: state || "",
+      country: country || "",
+      postalCode: postalCode || "",
+      nationality: nationality || "",
+      preferredCurrency: preferredCurrency || "INR",
+      profileImage: profileImage || "",
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "User created successfully.",
+      user: sanitizeUser(user),
+    });
+  } catch (error) {
+    console.error("createUser error:", error);
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "A user with this email already exists.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create user.",
+      error: error.message,
+    });
+  }
+};
+
+// GET ALL USERS
+// FILTER + SEARCH + SORT + PAGINATION
+
+exports.getAllUsers = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      search = "",
+      role,
+      isActive,
+      city,
+      state,
+      country,
+      gender,
+      nationality,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+      fromDate,
+      toDate,
+    } = req.query;
+
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+
+    const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 200);
+
+    // -----------------------------------------------
+    // FILTER
+    // -----------------------------------------------
+
+    const filter = {};
+
+    // -----------------------------------------------
+    // SEARCH
+    // -----------------------------------------------
+
+    if (search.trim()) {
+      const regex = new RegExp(escapeRegex(search.trim()), "i");
+
+      filter.$or = [
+        { fullName: regex },
+        { email: regex },
+        { phone: regex },
+        { city: regex },
+        { state: regex },
+        { country: regex },
+        { postalCode: regex },
+      ];
+    }
+
+    // -----------------------------------------------
+    // ROLE
+    // -----------------------------------------------
+
+    if (role) {
+      const roles = String(role)
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      const invalidRole = roles.find((item) => !isValidRole(item));
+
+      if (invalidRole) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid role: ${invalidRole}`,
+        });
+      }
+
+      filter.role = roles.length === 1 ? roles[0] : { $in: roles };
+    }
+
+    // -----------------------------------------------
+    // ACTIVE STATUS
+    // -----------------------------------------------
+
+    const activeValue = parseBoolean(isActive);
+
+    if (activeValue !== undefined) {
+      filter.isActive = activeValue;
+    }
+
+    // -----------------------------------------------
+    // LOCATION FILTERS
+    // -----------------------------------------------
+
+    if (city) {
+      filter.city = new RegExp(`^${escapeRegex(city.trim())}$`, "i");
+    }
+
+    if (state) {
+      filter.state = new RegExp(`^${escapeRegex(state.trim())}$`, "i");
+    }
+
+    if (country) {
+      filter.country = new RegExp(`^${escapeRegex(country.trim())}$`, "i");
+    }
+
+    // -----------------------------------------------
+    // OTHER FILTERS
+    // -----------------------------------------------
+
+    if (gender) {
+      filter.gender = new RegExp(`^${escapeRegex(gender.trim())}$`, "i");
+    }
+
+    if (nationality) {
+      filter.nationality = new RegExp(
+        `^${escapeRegex(nationality.trim())}$`,
+        "i",
+      );
+    }
+
+    // -----------------------------------------------
+    // DATE FILTER
+    // -----------------------------------------------
+
+    if (fromDate || toDate) {
+      filter.createdAt = {};
+
+      if (fromDate) {
+        const start = new Date(fromDate);
+
+        if (Number.isNaN(start.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid fromDate.",
+          });
+        }
+
+        filter.createdAt.$gte = start;
+      }
+
+      if (toDate) {
+        const end = new Date(toDate);
+
+        if (Number.isNaN(end.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid toDate.",
+          });
+        }
+
+        end.setHours(23, 59, 59, 999);
+
+        filter.createdAt.$lte = end;
+      }
+    }
+
+    // -----------------------------------------------
+    // SORTING
+    // -----------------------------------------------
+
+    const allowedSortFields = [
+      "fullName",
+      "email",
+      "role",
+      "createdAt",
+      "updatedAt",
+      "city",
+      "state",
+      "country",
+      "dateOfBirth",
+    ];
+
+    const safeSortBy = allowedSortFields.includes(sortBy)
+      ? sortBy
+      : "createdAt";
+
+    const safeSortOrder = String(sortOrder).toLowerCase() === "asc" ? 1 : -1;
+
+    const sort = {
+      [safeSortBy]: safeSortOrder,
+    };
+
+    // -----------------------------------------------
+    // COUNT
+    // -----------------------------------------------
+
+    const totalUsers = await User.countDocuments(filter);
+
+    // -----------------------------------------------
+    // DATA
+    // -----------------------------------------------
+
+    const users = await User.find(filter)
+      .sort(sort)
+      .skip((pageNumber - 1) * limitNumber)
+      .limit(limitNumber);
+
+    const totalPages = Math.ceil(totalUsers / limitNumber);
+
+    return res.status(200).json({
+      success: true,
+      users: users.map(sanitizeUser),
+
+      pagination: {
+        currentPage: pageNumber,
+        limit: limitNumber,
+        totalUsers,
+        totalPages,
+        hasNextPage: pageNumber < totalPages,
+        hasPreviousPage: pageNumber > 1,
+      },
+
+      filters: {
+        search,
         role,
+        isActive,
+        city,
+        state,
+        country,
+        gender,
+        nationality,
+        sortBy: safeSortBy,
+        sortOrder: safeSortOrder === 1 ? "asc" : "desc",
+      },
+    });
+  } catch (error) {
+    console.error("getAllUsers error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch users.",
+      error: error.message,
+    });
+  }
+};
+
+// UPDATE USER
+// ADMIN
+
+exports.updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!require("mongoose").isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID.",
+      });
+    }
+
+    const allowedFields = [
+      "fullName",
+      "email",
+      "phone",
+      "dateOfBirth",
+      "gender",
+      "addressLine1",
+      "addressLine2",
+      "city",
+      "state",
+      "country",
+      "postalCode",
+      "nationality",
+      "preferredCurrency",
+      "profileImage",
+      "isActive",
+      "role",
+    ];
+
+    const updates = {};
+
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    }
+
+    // -----------------------------------------------
+    // EMAIL
+    // -----------------------------------------------
+
+    if (updates.email !== undefined) {
+      updates.email = String(updates.email).trim().toLowerCase();
+
+      const emailExists = await User.findOne({
+        email: updates.email,
+        _id: { $ne: id },
+      });
+
+      if (emailExists) {
+        return res.status(409).json({
+          success: false,
+          message: "Another user already uses this email.",
+        });
+      }
+    }
+
+    // -----------------------------------------------
+    // ROLE
+    // -----------------------------------------------
+
+    if (updates.role !== undefined && !isValidRole(updates.role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user role.",
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "User updated successfully.",
+      user: sanitizeUser(user),
+    });
+  } catch (error) {
+    console.error("updateUser error:", error);
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Email already exists.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update user.",
+      error: error.message,
+    });
+  }
+};
+
+// UPDATE USER ROLE
+exports.updateUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!require("mongoose").isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID.",
+      });
+    }
+
+    if (!role || !isValidRole(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user role.",
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          role,
+        },
       },
       {
         new: true,
@@ -582,79 +1216,35 @@ exports.updateUserRole = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "User role updated successfully.",
-      user: buildUserResponse(user),
+      user: sanitizeUser(user),
     });
   } catch (error) {
-    console.error("UPDATE USER ROLE ERROR:", error);
+    console.error("updateUserRole error:", error);
 
     return res.status(500).json({
       success: false,
-      message: error.message || "Unable to update role.",
+      message: "Failed to update user role.",
+      error: error.message,
     });
   }
 };
 
-// =====================================================
-// DELETE USER
-// =====================================================
-
-exports.deleteUser = async (req, res) => {
+// ACTIVATE USER
+exports.activateUser = async (req, res) => {
   try {
-    const userId = req.params.id;
+    const { id } = req.params;
 
-    console.log("====================================");
-    console.log("DELETE USER REQUEST");
-    console.log("User ID:", userId);
-    console.log("Logged-in user:", req.user);
-    console.log("====================================");
-
-    // -------------------------------------------------
-    // VALIDATE ID
-    // -------------------------------------------------
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "User ID is required.",
-      });
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID.",
-      });
-    }
-
-    // -------------------------------------------------
-    // LOGGED-IN USER
-    // -------------------------------------------------
-
-    const loggedInUserId = req.user?._id || req.user?.id;
-
-    if (!loggedInUserId) {
-      return res.status(401).json({
-        success: false,
-        message: "Authenticated user ID not found.",
-      });
-    }
-
-    // -------------------------------------------------
-    // PREVENT SELF DELETE
-    // -------------------------------------------------
-
-    if (String(loggedInUserId) === String(userId)) {
-      return res.status(403).json({
-        success: false,
-        message: "You cannot delete your own account.",
-      });
-    }
-
-    // -------------------------------------------------
-    // FIND USER
-    // -------------------------------------------------
-
-    const user = await User.findById(userId);
+    const user = await User.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          isActive: true,
+        },
+      },
+      {
+        new: true,
+      },
+    );
 
     if (!user) {
       return res.status(404).json({
@@ -663,40 +1253,551 @@ exports.deleteUser = async (req, res) => {
       });
     }
 
-    // -------------------------------------------------
-    // PREVENT SUPERADMIN DELETE
-    // -------------------------------------------------
-
-    if (String(user.role || "").toLowerCase() === "superadmin") {
-      return res.status(403).json({
-        success: false,
-        message: "A SuperAdmin account cannot be deleted.",
-      });
-    }
-
-    // -------------------------------------------------
-    // DELETE
-    // -------------------------------------------------
-
-    await User.findByIdAndDelete(userId);
-
-    console.log(`USER DELETED: ${user.fullName} (${userId})`);
-
-    // -------------------------------------------------
-    // RESPONSE
-    // -------------------------------------------------
-
     return res.status(200).json({
       success: true,
-      message: `"${user.fullName}" was deleted successfully.`,
-      deletedUserId: userId,
+      message: "User activated successfully.",
+      user: sanitizeUser(user),
     });
   } catch (error) {
-    console.error("DELETE USER ERROR:", error);
+    console.error("activateUser error:", error);
 
     return res.status(500).json({
       success: false,
-      message: error.message || "Unable to delete user.",
+      message: "Failed to activate user.",
+      error: error.message,
+    });
+  }
+};
+
+// DEACTIVATE USER
+exports.deactivateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          isActive: false,
+        },
+      },
+      {
+        new: true,
+      },
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "User deactivated successfully.",
+      user: sanitizeUser(user),
+    });
+  } catch (error) {
+    console.error("deactivateUser error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to deactivate user.",
+      error: error.message,
+    });
+  }
+};
+
+// DELETE USER
+exports.deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!require("mongoose").isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID.",
+      });
+    }
+
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    await User.findByIdAndDelete(id);
+    return res.status(200).json({
+      success: true,
+      message: "User deleted successfully.",
+      deletedUserId: id,
+    });
+  } catch (error) {
+    console.error("deleteUser error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete user.",
+      error: error.message,
+    });
+  }
+};
+
+// BULK ACTIVATE USERS
+exports.bulkActivateUsers = async (req, res) => {
+  try {
+    const { userIds } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "userIds must be a non-empty array.",
+      });
+    }
+
+    const result = await User.updateMany(
+      {
+        _id: { $in: userIds },
+      },
+      {
+        $set: {
+          isActive: true,
+        },
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Users activated successfully.",
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    console.error("bulkActivateUsers error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to activate users.",
+      error: error.message,
+    });
+  }
+};
+
+// BULK DEACTIVATE USERS
+exports.bulkDeactivateUsers = async (req, res) => {
+  try {
+    const { userIds } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "userIds must be a non-empty array.",
+      });
+    }
+
+    const result = await User.updateMany(
+      {
+        _id: { $in: userIds },
+      },
+      {
+        $set: {
+          isActive: false,
+        },
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Users deactivated successfully.",
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    console.error("bulkDeactivateUsers error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to deactivate users.",
+      error: error.message,
+    });
+  }
+};
+
+// BULK UPDATE ROLE
+exports.bulkUpdateRole = async (req, res) => {
+  try {
+    const { userIds, role } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "userIds must be a non-empty array.",
+      });
+    }
+
+    if (!role || !isValidRole(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role.",
+      });
+    }
+
+    const result = await User.updateMany(
+      {
+        _id: { $in: userIds },
+      },
+      {
+        $set: {
+          role,
+        },
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "User roles updated successfully.",
+      role,
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    console.error("bulkUpdateRole error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update user roles.",
+      error: error.message,
+    });
+  }
+};
+
+// BULK DELETE USERS
+exports.bulkDeleteUsers = async (req, res) => {
+  try {
+    const { userIds } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "userIds must be a non-empty array.",
+      });
+    }
+
+    const result = await User.deleteMany({
+      _id: { $in: userIds },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Users deleted successfully.",
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    console.error("bulkDeleteUsers error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete users.",
+      error: error.message,
+    });
+  }
+};
+
+// GET USERS BY ROLE
+exports.getUsersByRole = async (req, res) => {
+  try {
+    const { role } = req.params;
+
+    if (!isValidRole(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role.",
+      });
+    }
+
+    const users = await User.find({
+      role,
+    }).sort({
+      fullName: 1,
+    });
+
+    return res.status(200).json({
+      success: true,
+      role,
+      count: users.length,
+      users: users.map(sanitizeUser),
+    });
+  } catch (error) {
+    console.error("getUsersByRole error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch users by role.",
+      error: error.message,
+    });
+  }
+};
+
+// GET ACTIVE USERS
+exports.getActiveUsers = async (req, res) => {
+  try {
+    const users = await User.find({
+      isActive: true,
+    }).sort({
+      fullName: 1,
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: users.length,
+      users: users.map(sanitizeUser),
+    });
+  } catch (error) {
+    console.error("getActiveUsers error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch active users.",
+      error: error.message,
+    });
+  }
+};
+
+// GET INACTIVE USERS
+exports.getInactiveUsers = async (req, res) => {
+  try {
+    const users = await User.find({
+      isActive: false,
+    }).sort({
+      fullName: 1,
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: users.length,
+      users: users.map(sanitizeUser),
+    });
+  } catch (error) {
+    console.error("getInactiveUsers error:", error);
+
+    return res.status(200).json({
+      success: true,
+      count: users.length,
+      users: users.map(sanitizeUser),
+    });
+  }
+};
+
+// USER STATISTICS
+exports.getUserStatistics = async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      activeUsers,
+      inactiveUsers,
+      roleStatistics,
+      cityStatistics,
+      stateStatistics,
+      countryStatistics,
+    ] = await Promise.all([
+      User.countDocuments(),
+
+      User.countDocuments({
+        isActive: true,
+      }),
+
+      User.countDocuments({
+        isActive: false,
+      }),
+
+      User.aggregate([
+        {
+          $group: {
+            _id: "$role",
+            count: {
+              $sum: 1,
+            },
+          },
+        },
+        {
+          $sort: {
+            count: -1,
+          },
+        },
+      ]),
+
+      User.aggregate([
+        {
+          $match: {
+            city: {
+              $nin: ["", null],
+            },
+          },
+        },
+        {
+          $group: {
+            _id: "$city",
+            count: {
+              $sum: 1,
+            },
+          },
+        },
+        {
+          $sort: {
+            count: -1,
+          },
+        },
+      ]),
+
+      User.aggregate([
+        {
+          $match: {
+            state: {
+              $nin: ["", null],
+            },
+          },
+        },
+        {
+          $group: {
+            _id: "$state",
+            count: {
+              $sum: 1,
+            },
+          },
+        },
+        {
+          $sort: {
+            count: -1,
+          },
+        },
+      ]),
+
+      User.aggregate([
+        {
+          $match: {
+            country: {
+              $nin: ["", null],
+            },
+          },
+        },
+        {
+          $group: {
+            _id: "$country",
+            count: {
+              $sum: 1,
+            },
+          },
+        },
+        {
+          $sort: {
+            count: -1,
+          },
+        },
+      ]),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+
+      statistics: {
+        totalUsers,
+        activeUsers,
+        inactiveUsers,
+
+        roleStatistics,
+        cityStatistics,
+        stateStatistics,
+        countryStatistics,
+      },
+    });
+  } catch (error) {
+    console.error("getUserStatistics error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate user statistics.",
+      error: error.message,
+    });
+  }
+};
+
+// SEARCH USERS
+exports.searchUsers = async (req, res) => {
+  try {
+    const { q } = req.query;
+
+    if (!q || !String(q).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query is required.",
+      });
+    }
+
+    const regex = new RegExp(escapeRegex(String(q).trim()), "i");
+    const users = await User.find({
+      $or: [
+        { fullName: regex },
+        { email: regex },
+        { phone: regex },
+        { city: regex },
+        { state: regex },
+        { country: regex },
+      ],
+    })
+      .sort({
+        fullName: 1,
+      })
+      .limit(100);
+
+    return res.status(200).json({
+      success: true,
+      count: users.length,
+      users: users.map(sanitizeUser),
+    });
+  } catch (error) {
+    console.error("searchUsers error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to search users.",
+      error: error.message,
+    });
+  }
+};
+
+// CHECK EMAIL AVAILABILITY
+exports.checkEmailAvailability = async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required.",
+      });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+    }).select("_id");
+
+    return res.status(200).json({
+      success: true,
+      email: normalizedEmail,
+      available: !existingUser,
+    });
+  } catch (error) {
+    console.error("checkEmailAvailability error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to check email availability.",
+      error: error.message,
     });
   }
 };

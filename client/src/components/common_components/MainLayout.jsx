@@ -154,9 +154,7 @@ import SalesExecutiveDashboard from "../../pages/sales_executive_pages/SalesExec
 
 import CreateFaculty from "../../pages/faculty_pages/CreateFaculty";
 
-// ============================================================================
 // TITLE MAP
-// ============================================================================
 
 const TITLE_MAP = {
   "/": "Homepage",
@@ -174,13 +172,11 @@ const TITLE_MAP = {
   "/ui-ux-design": "UI UX Design",
   "/digital-transformation": "Digital Transformation",
   "/privacy-policy": "PrivacyPolicy",
-
   "/login": "Login",
   "/sign-in": "Login",
   "/register": "Register",
   "/forgot-password": "ForgotPassword",
   "/reset-password/:token": "ResetPassword",
-
   "/user-dashboard": "UserDashboard",
   "/profile": "Profile",
   "/update-profile": "UpdateProfile",
@@ -189,75 +185,58 @@ const TITLE_MAP = {
   "/super-admin-dashboard": "SuperAdminDashboard",
   "/employee-dashboard": "EmployeeDashboard",
   "/dashboard/:role": "RoleDashboard",
-
   "/accountant-dashboard": "AccountantDashboard",
   "/alumni-relations-dashboard": "AlumniRelationsDashboard",
   "/assistant-professor-dashboard": "AssistantProfessorDashboard",
   "/professor-dashboard": "ProfessorDashboard",
   "/faculty-dashboard": "FacultyDashboard",
-
   "/create-faculty": "CreateFaculty",
   "/all-faculties": "AllFaculties",
   "/faculty/:id": "Faculty Details",
   "/update-faculty/:id": "Update Faculty Details",
   "/teacher-dashboard": "TeacherDashboard",
-
   "/business-analyst-dashboard": "BusinessAnalystDashboard",
   "/content-creator-dashboard": "ContentCreatorDashboard",
   "/course-coordinator-dashboard": "CourseCoordinatorDashboard",
   "/customer-support-dashboard": "CustomerSupportDashboard",
   "/data-scientist-dashboard": "DataScientistDashboard",
-
   "/dean-dashboard": "DeanDashboard",
   "/department-head-dashboard": "DepartmentHeadDashboard",
   "/hod-dashboard": "HodDashboard",
-
   "/developer-lead-dashboard": "DeveloperLeadDashboard",
   "/developer-dashboard": "DeveloperDashboard",
-
   "/event-coordinator-dashboard": "EventCoordinatorDashboard",
   "/exam-controller-dashboard": "ExamControllerDashboard",
-
   "/hr-manager-dashboard": "HrManagerDashboard",
   "/hr-dashboard": "HrDashboard",
-
   "/intern-dashboard": "InternDashboard",
   "/legal-advisor-dashboard": "LegalAdvisorDashboard",
   "/librarian-dashboard": "LibrarianDashboard",
   "/maintenance-staff-dashboard": "MaintenanceStaffDashboard",
-
   "/marketing-manager-dashboard": "MarketingManagerDashboard",
   "/operations-manager-dashboard": "OperationsManagerDashboard",
   "/product-owner-dashboard": "ProductOwnerDashboard",
   "/project-manager-dashboard": "ProjectManagerDashboard",
-
   "/qa-lead-dashboard": "QaLeadDashboard",
   "/recruiter-dashboard": "RecruiterDashboard",
   "/registrar-dashboard": "RegistrarDashboard",
   "/researcher-dashboard": "ResearcherDashboard",
   "/sales-executive-dashboard": "SalesExecutiveDashboard",
-
   "/student-dashboard": "StudentDashboard",
-
   "/support-engineer-dashboard": "SupportEngineerDashboard",
   "/tech-lead-dashboard": "TechLeadDashboard",
   "/test-engineer-dashboard": "TestEngineerDashboard",
   "/ux-ui-designer-dashboard": "UxUiDesignerDashboard",
-
   "/all-subscriptions": "AllSubscriptions",
-
   "/all-messages": "AllMessages",
   "/all-replies": "AllReplies",
   "/single-reply/:id": "SingleReply",
   "/reply-message/:id": "ReplyMessage",
-
   "/page-not-found": "404",
   "/404": "404",
 };
 
-// ============================================================================
 // HELPERS
-// ============================================================================
 
 function isBlank(value) {
   return value == null || String(value).trim() === "";
@@ -291,31 +270,22 @@ function resolveMetaPath(pathname) {
   return pathname;
 }
 
-// ============================================================================
-// LAYOUT
-// ============================================================================
-
 function LayoutInner() {
   const location = useLocation();
   const { user } = useAuth();
-
   const resolvedPath = resolveMetaPath(location.pathname);
 
   useEffect(() => {
     const pageTitle = TITLE_MAP[resolvedPath];
-
     document.title = pageTitle ? `Ecoders - ${pageTitle}` : "Ecoders";
   }, [resolvedPath]);
 
-  // ========================================================================
   // HERO CONFIGURATION
-  // ========================================================================
 
   const HERO_BY_PATH = {
     "/": homepageHero,
     "/home": homepageHero,
     "/homepage": homepageHero,
-
     "/contact": contactHero,
     "/about": aboutUsHero,
     "/about-us": aboutUsHero,
@@ -327,13 +297,11 @@ function LayoutInner() {
     "/ui-ux-design": uiuxDesignHero,
     "/digital-transformation": digitalTransformationHero,
     "/privacy-policy": privacyPolicyHero,
-
     "/login": loginHero,
     "/sign-in": loginHero,
     "/register": registerHero,
     "/forgot-password": forgotPasswordHero,
     "/reset-password/:token": resetPasswordHero,
-
     "/user-dashboard": userDashboardHero,
     "/profile": profileHero,
     "/update-profile": updateProfileHero,
@@ -342,85 +310,71 @@ function LayoutInner() {
     "/super-admin-dashboard": superAdminDashboardHero,
     "/employee-dashboard": employeeDashboardHero,
     "/dashboard/:role": roleDashboardHero,
-
     "/accountant-dashboard": {
       heroTitle: "Accountant Dashboard",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/alumni-relations-dashboard": {
       heroTitle: "Alumni Relations Dashboard",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/assistant-professor-dashboard": {
       heroTitle: "Assistant Professor Dashboard",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/professor-dashboard": {
       heroTitle: "Professor Dashboard",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/faculty-dashboard": {
       heroTitle: "Faculty Dashboard",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/create-faculty": {
       heroTitle: "Create Faculty",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/all-faculties": {
       heroTitle: "All Faculties",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/faculty/:id": {
       heroTitle: "Faculty Details",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/update-faculty/:id": {
       heroTitle: "Update Faculty Details",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/teacher-dashboard": {
       heroTitle: "Teacher Dashboard",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/business-analyst-dashboard": {
       heroTitle: "Business Analyst Dashboard",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/content-creator-dashboard": {
       heroTitle: "Content Creator Dashboard",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/course-coordinator-dashboard": {
       heroTitle: "Course Coordinator Dashboard",
       heroSubtitle: "",
       showHero: false,
     },
-
     "/customer-support-dashboard": {
       heroTitle: "Customer Support Dashboard",
       heroSubtitle: "",
@@ -657,10 +611,6 @@ function LayoutInner() {
 
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
 
-          {/* ============================================================
-              AUTH
-          ============================================================ */}
-
           <Route
             path="/login"
             element={
@@ -706,10 +656,6 @@ function LayoutInner() {
             }
           />
 
-          {/* ============================================================
-              COMMON AUTHENTICATED
-          ============================================================ */}
-
           <Route
             path="/profile"
             element={
@@ -737,10 +683,6 @@ function LayoutInner() {
             }
           />
 
-          {/* ============================================================
-              USER
-          ============================================================ */}
-
           <Route
             path="/user-dashboard"
             element={
@@ -750,10 +692,6 @@ function LayoutInner() {
             }
           />
 
-          {/* ============================================================
-              SUPER ADMIN
-          ============================================================ */}
-
           <Route
             path="/super-admin-dashboard"
             element={
@@ -762,11 +700,6 @@ function LayoutInner() {
               </RoleRoute>
             }
           />
-
-          {/* ============================================================
-              FACULTY
-          ============================================================ */}
-
           <Route
             path="/assistant-professor-dashboard"
             element={
@@ -838,11 +771,6 @@ function LayoutInner() {
               </RoleRoute>
             }
           />
-
-          {/* ============================================================
-              OTHER ACADEMIC ROLES
-          ============================================================ */}
-
           <Route
             path="/accountant-dashboard"
             element={
@@ -932,11 +860,6 @@ function LayoutInner() {
               </RoleRoute>
             }
           />
-
-          {/* ============================================================
-              BUSINESS / TECHNOLOGY
-          ============================================================ */}
-
           <Route
             path="/business-analyst-dashboard"
             element={
@@ -1153,10 +1076,6 @@ function LayoutInner() {
             }
           />
 
-          {/* ============================================================
-              LEGACY
-          ============================================================ */}
-
           <Route
             path="/employee-dashboard"
             element={
@@ -1174,10 +1093,6 @@ function LayoutInner() {
               </PrivateRoute>
             }
           />
-
-          {/* ============================================================
-              ADMIN
-          ============================================================ */}
 
           <Route
             path="/all-users"
@@ -1233,10 +1148,6 @@ function LayoutInner() {
             }
           />
 
-          {/* ============================================================
-              404
-          ============================================================ */}
-
           <Route path="/page-not-found" element={<PageNotFound />} />
           <Route path="/404" element={<PageNotFound />} />
 
@@ -1249,10 +1160,6 @@ function LayoutInner() {
     </div>
   );
 }
-
-// ============================================================================
-// MAIN LAYOUT
-// ============================================================================
 
 export default function MainLayout() {
   return (

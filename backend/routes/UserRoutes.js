@@ -2,10 +2,6 @@ const express = require("express");
 
 const router = express.Router();
 
-// =====================================================
-// USER CONTROLLER
-// =====================================================
-
 const {
   registerUser,
   loginUser,
@@ -13,52 +9,64 @@ const {
   logoutUser,
   forgotPassword,
   resetPassword,
+  changePassword,
   getMyProfile,
   updateMyProfile,
+  createUser,
+  getUserById,
+  updateUser,
+  deleteUser,
   getAllUsers,
+  searchUsers,
   updateUserRole,
+  getUsersByRole,
+  activateUser,
+  deactivateUser,
+  getActiveUsers,
+  getInactiveUsers,
+  bulkActivateUsers,
+  bulkDeactivateUsers,
+  bulkUpdateRole,
+  bulkDeleteUsers,
+  getUserStatistics,
+  checkEmailAvailability,
 } = require("../controllers/UserController");
-
-// =====================================================
-// AUTH MIDDLEWARE
-// =====================================================
 
 const { requireSignIn, isSuperAdmin } = require("../middleware/authMiddleware");
 
-// =====================================================
-// PUBLIC ROUTES
-// =====================================================
-
 router.post("/register", registerUser);
-
 router.post("/login", loginUser);
-
 router.post("/refresh-token", refreshToken);
-
 router.post("/logout", logoutUser);
-
 router.post("/forgot-password", forgotPassword);
-
 router.put("/reset-password/:token", resetPassword);
-
-// =====================================================
-// LOGGED-IN USER ROUTES
-// =====================================================
-
 router.get("/me", requireSignIn, getMyProfile);
-
 router.put("/update-profile", requireSignIn, updateMyProfile);
-
-// =====================================================
-// SUPER ADMIN ROUTES
-// =====================================================
-
+router.put("/change-password", requireSignIn, changePassword);
+router.get("/check-email", requireSignIn, isSuperAdmin, checkEmailAvailability);
 router.get("/all-users", requireSignIn, isSuperAdmin, getAllUsers);
-
+router.post("/create-user", requireSignIn, isSuperAdmin, createUser);
+router.get("/get-user/:id", requireSignIn, isSuperAdmin, getUserById);
+router.put("/update-user/:id", requireSignIn, isSuperAdmin, updateUser);
+router.delete("/delete-user/:id", requireSignIn, isSuperAdmin, deleteUser);
 router.put("/update-role/:id", requireSignIn, isSuperAdmin, updateUserRole);
+router.get("/by-role/:role", requireSignIn, isSuperAdmin, getUsersByRole);
+router.put("/activate-user/:id", requireSignIn, isSuperAdmin, activateUser);
+router.put("/deactivate-user/:id", requireSignIn, isSuperAdmin, deactivateUser);
+router.get("/active-users", requireSignIn, isSuperAdmin, getActiveUsers);
+router.get("/inactive-users", requireSignIn, isSuperAdmin, getInactiveUsers);
+router.put("/bulk-activate", requireSignIn, isSuperAdmin, bulkActivateUsers);
 
-// =====================================================
-// EXPORT
-// =====================================================
+router.put(
+  "/bulk-deactivate",
+  requireSignIn,
+  isSuperAdmin,
+  bulkDeactivateUsers,
+);
+
+router.put("/bulk-update-role", requireSignIn, isSuperAdmin, bulkUpdateRole);
+router.delete("/bulk-delete", requireSignIn, isSuperAdmin, bulkDeleteUsers);
+router.get("/search", requireSignIn, isSuperAdmin, searchUsers);
+router.get("/statistics", requireSignIn, isSuperAdmin, getUserStatistics);
 
 module.exports = router;
