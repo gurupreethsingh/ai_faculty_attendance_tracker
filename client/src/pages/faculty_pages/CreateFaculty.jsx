@@ -64,9 +64,9 @@ const CreateFaculty = () => {
   const navigate = useNavigate();
   const { api } = useAuth();
 
-  // =====================================================
+  
   // STATE
-  // =====================================================
+  
 
   const [creationMode, setCreationMode] = useState("existing");
 
@@ -93,9 +93,9 @@ const CreateFaculty = () => {
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  // =====================================================
+  
   // LOAD ONLY USERS WITH ROLE = "user"
-  // =====================================================
+  
 
   const loadUsers = async () => {
     try {
@@ -103,41 +103,9 @@ const CreateFaculty = () => {
       setErrorMessage("");
 
       console.log("Loading users with role = user...");
-
-      /*
-        IMPORTANT
-
-        Backend route:
-
-        router.get(
-          "/by-role/:role",
-          requireSignIn,
-          isSuperAdmin,
-          getUsersByRole
-        );
-
-        index.js:
-
-        app.use("/api/users", userRoutes);
-
-        Therefore:
-
-        GET /api/users/by-role/user
-
-        AuthManager api baseURL already contains /api,
-        so frontend call is:
-
-        /users/by-role/user
-      */
-
       const response = await api.get("/users/by-role/user");
 
       console.log("GET USERS BY ROLE RESPONSE:", response?.data);
-
-      /*
-        Support different possible response formats from
-        UserController.
-      */
 
       let responseUsers =
         response?.data?.users ||
@@ -145,36 +113,9 @@ const CreateFaculty = () => {
         response?.data?.results ||
         response?.data;
 
-      /*
-        If backend returns:
-
-        {
-          success: true,
-          users: [...]
-        }
-
-        users is handled above.
-
-        If backend directly returns:
-
-        [...]
-
-        that is also handled.
-      */
-
       if (!Array.isArray(responseUsers)) {
         responseUsers = [];
       }
-
-      /*
-        Safety check.
-
-        Backend should already return ONLY role=user.
-
-        We still keep this check so that if the backend response
-        changes later, faculty/admin users cannot accidentally
-        appear in this dropdown.
-      */
 
       const normalisedUsers = responseUsers.filter((user) => {
         if (!user) return false;
@@ -226,19 +167,11 @@ const CreateFaculty = () => {
     }
   };
 
-  // =====================================================
-  // LOAD USERS WHEN EXISTING MODE IS SELECTED
-  // =====================================================
-
   useEffect(() => {
     if (creationMode === "existing") {
       loadUsers();
     }
   }, [creationMode]);
-
-  // =====================================================
-  // FILTER USERS
-  // =====================================================
 
   const filteredUsers = useMemo(() => {
     const search = userSearch.trim().toLowerCase();
@@ -253,7 +186,6 @@ const CreateFaculty = () => {
       ).toLowerCase();
 
       const email = String(user.email || "").toLowerCase();
-
       const phone = String(user.phone || user.mobile || "").toLowerCase();
 
       return (
@@ -264,9 +196,6 @@ const CreateFaculty = () => {
     });
   }, [users, userSearch]);
 
-  // =====================================================
-  // HANDLE MODE CHANGE
-  // =====================================================
 
   const handleModeChange = (mode) => {
     setCreationMode(mode);
@@ -298,10 +227,6 @@ const CreateFaculty = () => {
     }
   };
 
-  // =====================================================
-  // SELECT EXISTING USER
-  // =====================================================
-
   const handleSelectUser = (user) => {
     if (!user) return;
 
@@ -323,21 +248,13 @@ const CreateFaculty = () => {
         : "",
 
       gender: user.gender || "",
-
       addressLine1: user.addressLine1 || user.address || "",
-
       addressLine2: user.addressLine2 || "",
-
       city: user.city || "",
-
       state: user.state || "",
-
       country: user.country || "India",
-
       postalCode: user.postalCode || user.pincode || "",
-
       nationality: user.nationality || "Indian",
-
       preferredCurrency: user.preferredCurrency || "INR",
     }));
 
@@ -348,10 +265,6 @@ const CreateFaculty = () => {
     setShowUserDropdown(false);
     setErrorMessage("");
   };
-
-  // =====================================================
-  // CLEAR SELECTED USER
-  // =====================================================
 
   const handleClearSelectedUser = () => {
     setSelectedUser(null);
@@ -368,10 +281,6 @@ const CreateFaculty = () => {
     setErrorMessage("");
   };
 
-  // =====================================================
-  // INPUT CHANGE
-  // =====================================================
-
   const handleChange = (event) => {
     const { name, value } = event.target;
 
@@ -381,13 +290,8 @@ const CreateFaculty = () => {
     }));
   };
 
-  // =====================================================
-  // ADD SUBJECT
-  // =====================================================
-
-  const handleAddSubject = () => {
+    const handleAddSubject = () => {
     const subjectCode = subjectInput.subjectCode.trim();
-
     const subjectName = subjectInput.subjectName.trim();
 
     if (!subjectCode || !subjectName) {
@@ -428,9 +332,6 @@ const CreateFaculty = () => {
     setErrorMessage("");
   };
 
-  // =====================================================
-  // REMOVE SUBJECT
-  // =====================================================
 
   const handleRemoveSubject = (index) => {
     setFormData((previous) => ({
@@ -441,10 +342,6 @@ const CreateFaculty = () => {
       ),
     }));
   };
-
-  // =====================================================
-  // ADD CLASS
-  // =====================================================
 
   const handleAddClass = () => {
     const className = classInput.trim();
@@ -477,10 +374,7 @@ const CreateFaculty = () => {
     setErrorMessage("");
   };
 
-  // =====================================================
-  // REMOVE CLASS
-  // =====================================================
-
+  
   const handleRemoveClass = (index) => {
     setFormData((previous) => ({
       ...previous,
@@ -488,10 +382,6 @@ const CreateFaculty = () => {
       classes: previous.classes.filter((_, classIndex) => classIndex !== index),
     }));
   };
-
-  // =====================================================
-  // VALIDATION
-  // =====================================================
 
   const validateForm = () => {
     if (creationMode === "existing" && !selectedUser) {
@@ -536,10 +426,6 @@ const CreateFaculty = () => {
 
     return null;
   };
-
-  // =====================================================
-  // SUBMIT
-  // =====================================================
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -687,18 +573,18 @@ const CreateFaculty = () => {
     }
   };
 
-  // =====================================================
+  
   // CLASSES
-  // =====================================================
+  
 
   const inputClass =
     "mt-2 block w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100";
 
   const labelClass = "text-sm font-semibold text-gray-700";
 
-  // =====================================================
+  
   // RENDER
-  // =====================================================
+  
 
   return (
     <div className="min-h-full bg-transparent px-6 py-10 lg:px-8">

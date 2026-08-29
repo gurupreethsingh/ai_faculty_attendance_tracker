@@ -352,10 +352,32 @@ exports.getMyFacultyProfile = async (req, res) => {
 
 // CREATE FACULTY
 
+// =====================================================
+// CREATE FACULTY
+// =====================================================
+
 exports.createFaculty = async (req, res) => {
   try {
     const {
+      // USER INFORMATION
       userId,
+      fullName,
+      email,
+      password,
+      phone,
+      dateOfBirth,
+      gender,
+      addressLine1,
+      addressLine2,
+      city,
+      state,
+      country,
+      postalCode,
+      nationality,
+      preferredCurrency,
+      profileImage,
+
+      // FACULTY INFORMATION
       employeeId,
       designation,
       department,
@@ -369,71 +391,39 @@ exports.createFaculty = async (req, res) => {
       classes,
     } = req.body;
 
-    // REQUIRED FIELDS
+    // =================================================
+    // BASIC VALIDATION
+    // =================================================
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "User ID is required.",
-      });
-    }
-
-    if (!employeeId || !employeeId.trim()) {
+    if (!employeeId || !String(employeeId).trim()) {
       return res.status(400).json({
         success: false,
         message: "Employee ID is required.",
       });
     }
 
-    if (!designation || !designation.trim()) {
+    if (!designation || !String(designation).trim()) {
       return res.status(400).json({
         success: false,
         message: "Designation is required.",
       });
     }
 
-    if (!department || !department.trim()) {
+    if (!department || !String(department).trim()) {
       return res.status(400).json({
         success: false,
         message: "Department is required.",
       });
     }
 
-    if (!isValidObjectId(userId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID.",
-      });
-    }
-
-    // CHECK USER
-
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
-      });
-    }
-
-    // CHECK EXISTING FACULTY PROFILE
-
-    const existingFaculty = await Faculty.findOne({
-      userId,
-    });
-
-    if (existingFaculty) {
-      return res.status(409).json({
-        success: false,
-        message: "A faculty profile already exists for this user.",
-      });
-    }
-
+    // =================================================
     // CHECK EMPLOYEE ID
+    // =================================================
+
+    const normalizedEmployeeId = String(employeeId).trim();
 
     const existingEmployee = await Faculty.findOne({
-      employeeId: employeeId.trim(),
+      employeeId: normalizedEmployeeId,
     });
 
     if (existingEmployee) {
@@ -443,46 +433,568 @@ exports.createFaculty = async (req, res) => {
       });
     }
 
-    // CREATE FACULTY
+    // =================================================
+    // EXISTING USER -> CONVERT TO FACULTY
+    // =================================================
 
-    const faculty = await Faculty.create({
-      userId,
-      employeeId: employeeId.trim(),
-      designation: designation.trim(),
-      department: department.trim(),
-      qualification: qualification || "",
-      specialization: specialization || "",
-      experience:
-        experience === undefined || experience === "" ? 0 : Number(experience),
-      joiningDate: joiningDate || null,
-      employmentType: employmentType || "",
-      status: status || "active",
-      subjects: normalizeArray(subjects),
-      classes: normalizeArray(classes),
-      isDeleted: false,
-      deletedAt: null,
-    });
+    if (userId) {
+      // -----------------------------------------------
+      // VALIDATE USER ID
+      // -----------------------------------------------
 
-    // MAKE USER A FACULTY
+      if (!isValidObjectId(userId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid user ID.",
+        });
+      }
 
-    if (user.role !== "faculty") {
-      user.role = "faculty";
-      await user.save();
+      // -----------------------------------------------
+      // FIND USER
+      // -----------------------------------------------
+
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found.",
+        });
+      }
+
+      // -----------------------------------------------
+      // ONLY NORMAL USERS CAN BE CONVERTED
+      // -----------------------------------------------
+
+      if (user.role !== "user") {
+        return res.status(400).json({
+          success: false,
+          message: `This account cannot be converted because its current role is "${user.role}".`,
+        });
+      }
+
+      // -----------------------------------------------
+      // CHECK WHETHER FACULTY ALREADY EXISTS
+      // -----------------------------------------------
+
+      const existingFaculty = await Faculty.findOne({
+        userId: user._id,
+      });
+
+      if (existingFaculty) {
+        return res.status(409).json({
+          success: false,
+          message: "A faculty profile already exists for this user.",
+        });
+      }
+
+      // -----------------------------------------------
+      // SAVE ORIGINAL USER DATA
+      //
+      // This allows us to restore the User document
+      // if Faculty creation fails.
+      // -----------------------------------------------
+
+      const originalUserData = {
+        fullName: user.fullName,
+        email: user.email,
+        phone: user.phone,
+        dateOfBirth: user.dateOfBirth,
+        gender: user.gender,
+        addressLine1: user.addressLine1,
+        addressLine2: user.addressLine2,
+        city: user.city,
+        state: user.state,
+        country: user.country,
+        postalCode: user.postalCode,
+        nationality: user.nationality,
+        preferredCurrency: user.preferredCurrency,
+        profileImage: user.profileImage,
+        role: user.role,
+        isActive: user.isActive,
+      };
+
+      try {
+        // =============================================
+        // UPDATE USER INFORMATION
+        // =============================================
+
+        if (fullName !== undefined) {
+          const normalizedFullName = String(fullName).trim();
+
+          if (normalizedFullName.length < 3) {
+            return res.status(400).json({
+              success: false,
+              message: "Full name must be at least 3 characters.",
+            });
+          }
+
+          user.fullName = normalizedFullName;
+        }
+
+        // ---------------------------------------------
+        // EMAIL
+        // ---------------------------------------------
+
+        if (email !== undefined) {
+          const normalizedEmail = String(email)
+            .trim()
+            .toLowerCase();
+
+          if (!normalizedEmail) {
+            return res.status(400).json({
+              success: false,
+              message: "Email is required.",
+            });
+          }
+
+          const emailRegex = /^\S+@\S+\.\S+$/;
+
+          if (!emailRegex.test(normalizedEmail)) {
+            return res.status(400).json({
+              success: false,
+              message: "Please enter a valid email address.",
+            });
+          }
+
+          const emailExists = await User.findOne({
+            email: normalizedEmail,
+            _id: {
+              $ne: user._id,
+            },
+          });
+
+          if (emailExists) {
+            return res.status(409).json({
+              success: false,
+              message: "Email address is already in use.",
+            });
+          }
+
+          user.email = normalizedEmail;
+        }
+
+        // ---------------------------------------------
+        // USER PERSONAL / CONTACT INFORMATION
+        // ---------------------------------------------
+
+        if (phone !== undefined) {
+          user.phone = String(phone).trim();
+        }
+
+        if (dateOfBirth !== undefined) {
+          user.dateOfBirth = dateOfBirth || null;
+        }
+
+        if (gender !== undefined) {
+          user.gender = String(gender).trim();
+        }
+
+        // ---------------------------------------------
+        // ADDRESS
+        // ---------------------------------------------
+
+        if (addressLine1 !== undefined) {
+          user.addressLine1 = String(addressLine1).trim();
+        }
+
+        if (addressLine2 !== undefined) {
+          user.addressLine2 = String(addressLine2).trim();
+        }
+
+        if (city !== undefined) {
+          user.city = String(city).trim();
+        }
+
+        if (state !== undefined) {
+          user.state = String(state).trim();
+        }
+
+        if (country !== undefined) {
+          user.country = String(country).trim();
+        }
+
+        if (postalCode !== undefined) {
+          user.postalCode = String(postalCode).trim();
+        }
+
+        if (nationality !== undefined) {
+          user.nationality = String(nationality).trim();
+        }
+
+        if (preferredCurrency !== undefined) {
+          user.preferredCurrency = String(
+            preferredCurrency,
+          ).trim();
+        }
+
+        if (profileImage !== undefined) {
+          user.profileImage = String(profileImage).trim();
+        }
+
+        // ---------------------------------------------
+        // CHANGE ROLE
+        // ---------------------------------------------
+
+        user.role = "faculty";
+
+        user.isActive = true;
+
+        // ---------------------------------------------
+        // SAVE USER
+        // ---------------------------------------------
+
+        await user.save();
+
+        // =============================================
+        // CREATE FACULTY PROFILE
+        // =============================================
+
+        const faculty = await Faculty.create({
+          userId: user._id,
+
+          employeeId: normalizedEmployeeId,
+
+          designation: String(designation).trim(),
+
+          department: String(department).trim(),
+
+          qualification:
+            qualification !== undefined
+              ? String(qualification).trim()
+              : "",
+
+          specialization:
+            specialization !== undefined
+              ? String(specialization).trim()
+              : "",
+
+          experience:
+            experience === undefined || experience === ""
+              ? 0
+              : Number(experience),
+
+          joiningDate: joiningDate || null,
+
+          employmentType: employmentType || "",
+
+          status: status || "active",
+
+          subjects: Array.isArray(subjects) ? subjects : [],
+
+          classes: Array.isArray(classes) ? classes : [],
+
+          isDeleted: false,
+
+          deletedAt: null,
+        });
+
+        // =============================================
+        // POPULATE USER
+        // =============================================
+
+        const populatedFaculty = await Faculty.findById(
+          faculty._id,
+        ).populate({
+          path: "userId",
+          select:
+            "fullName email phone dateOfBirth gender addressLine1 addressLine2 city state country postalCode nationality preferredCurrency profileImage role isActive",
+        });
+
+        // =============================================
+        // SUCCESS
+        // =============================================
+
+        return res.status(201).json({
+          success: true,
+
+          message:
+            "Existing user converted to faculty successfully.",
+
+          faculty: populatedFaculty,
+        });
+      } catch (error) {
+        // =============================================
+        // ROLLBACK USER
+        //
+        // If faculty creation fails after the User
+        // was modified, restore the original User.
+        // =============================================
+
+        try {
+          await User.findByIdAndUpdate(
+            user._id,
+            {
+              $set: originalUserData,
+            },
+            {
+              runValidators: false,
+            },
+          );
+        } catch (rollbackError) {
+          console.error(
+            "USER ROLLBACK ERROR:",
+            rollbackError,
+          );
+        }
+
+        throw error;
+      }
     }
 
-    const populatedFaculty = await Faculty.findById(faculty._id).populate({
-      path: "userId",
-      select:
-        "fullName email phone dateOfBirth gender addressLine1 addressLine2 city state country postalCode nationality preferredCurrency profileImage role isActive",
+    // =================================================
+    // NEW USER -> CREATE USER + FACULTY
+    // =================================================
+
+    // Password is required for a completely new account.
+
+    if (!password || !String(password).trim()) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password is required when creating a new faculty account.",
+      });
+    }
+
+    if (String(password).trim().length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters.",
+      });
+    }
+
+    // -----------------------------------------------
+    // REQUIRED NEW USER INFORMATION
+    // -----------------------------------------------
+
+    if (!fullName || !String(fullName).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Full name is required.",
+      });
+    }
+
+    if (!email || !String(email).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required.",
+      });
+    }
+
+    const normalizedEmail = String(email)
+      .trim()
+      .toLowerCase();
+
+    const emailRegex = /^\S+@\S+\.\S+$/;
+
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter a valid email address.",
+      });
+    }
+
+    // -----------------------------------------------
+    // CHECK EMAIL
+    // -----------------------------------------------
+
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
     });
 
-    return res.status(201).json({
-      success: true,
-      message: "Faculty created successfully.",
-      faculty: populatedFaculty,
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "A user with this email already exists.",
+      });
+    }
+
+    // -----------------------------------------------
+    // CREATE NEW USER
+    // -----------------------------------------------
+
+    const newUser = await User.create({
+      fullName: String(fullName).trim(),
+
+      email: normalizedEmail,
+
+      password: String(password).trim(),
+
+      role: "faculty",
+
+      isActive: true,
+
+      phone:
+        phone !== undefined
+          ? String(phone).trim()
+          : "",
+
+      dateOfBirth: dateOfBirth || null,
+
+      gender:
+        gender !== undefined
+          ? String(gender).trim()
+          : "",
+
+      addressLine1:
+        addressLine1 !== undefined
+          ? String(addressLine1).trim()
+          : "",
+
+      addressLine2:
+        addressLine2 !== undefined
+          ? String(addressLine2).trim()
+          : "",
+
+      city:
+        city !== undefined
+          ? String(city).trim()
+          : "",
+
+      state:
+        state !== undefined
+          ? String(state).trim()
+          : "",
+
+      country:
+        country !== undefined
+          ? String(country).trim()
+          : "India",
+
+      postalCode:
+        postalCode !== undefined
+          ? String(postalCode).trim()
+          : "",
+
+      nationality:
+        nationality !== undefined
+          ? String(nationality).trim()
+          : "Indian",
+
+      preferredCurrency:
+        preferredCurrency !== undefined
+          ? String(preferredCurrency).trim()
+          : "INR",
+
+      profileImage:
+        profileImage !== undefined
+          ? String(profileImage).trim()
+          : "",
     });
+
+    try {
+      const faculty = await Faculty.create({
+        userId: newUser._id,
+
+        employeeId: normalizedEmployeeId,
+
+        designation: String(designation).trim(),
+
+        department: String(department).trim(),
+
+        qualification:
+          qualification !== undefined
+            ? String(qualification).trim()
+            : "",
+
+        specialization:
+          specialization !== undefined
+            ? String(specialization).trim()
+            : "",
+
+        experience:
+          experience === undefined || experience === ""
+            ? 0
+            : Number(experience),
+
+        joiningDate: joiningDate || null,
+
+        employmentType: employmentType || "",
+
+        status: status || "active",
+
+        subjects: Array.isArray(subjects)
+          ? subjects
+          : [],
+
+        classes: Array.isArray(classes)
+          ? classes
+          : [],
+
+        isDeleted: false,
+
+        deletedAt: null,
+      });
+
+      // ---------------------------------------------
+      // POPULATE USER
+      // ---------------------------------------------
+
+      const populatedFaculty = await Faculty.findById(
+        faculty._id,
+      ).populate({
+        path: "userId",
+        select:
+          "fullName email phone dateOfBirth gender addressLine1 addressLine2 city state country postalCode nationality preferredCurrency profileImage role isActive",
+      });
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "New faculty account created successfully.",
+
+        faculty: populatedFaculty,
+      });
+    } catch (facultyCreationError) {
+      // ---------------------------------------------
+      // ROLLBACK NEW USER
+      // ---------------------------------------------
+
+      try {
+        await User.findByIdAndDelete(newUser._id);
+      } catch (deleteError) {
+        console.error(
+          "NEW USER ROLLBACK ERROR:",
+          deleteError,
+        );
+      }
+
+      throw facultyCreationError;
+    }
   } catch (error) {
-    return sendError(res, error, "Failed to create faculty.");
+    console.error("createFaculty error:", error);
+
+    if (error?.code === 11000) {
+      const duplicateFields = Object.keys(
+        error.keyPattern || {},
+      );
+
+      return res.status(409).json({
+        success: false,
+        message: `Duplicate value for: ${
+          duplicateFields.join(", ") || "unique field"
+        }.`,
+      });
+    }
+
+    if (error?.name === "ValidationError") {
+      const errors = Object.values(error.errors).map(
+        (err) => err.message,
+      );
+
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed.",
+        errors,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create faculty.",
+      error: error.message,
+    });
   }
 };
 
