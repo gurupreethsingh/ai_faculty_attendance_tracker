@@ -153,6 +153,10 @@ import ResearcherDashboard from "../../pages/researcher_pages/ResearcherDashboar
 import SalesExecutiveDashboard from "../../pages/sales_executive_pages/SalesExecutiveDashboard";
 
 import CreateFaculty from "../../pages/faculty_pages/CreateFaculty";
+// time table.
+import CreateTimeTable from "../../pages/timetable_pages/CreateTimeTable";
+import AllTimeTables from "../../pages/timetable_pages/AllTimeTables";
+import SingleFacultyTimeTable from "../../pages/timetable_pages/SingleFacultyTimeTable";
 
 // TITLE MAP
 
@@ -232,6 +236,9 @@ const TITLE_MAP = {
   "/all-replies": "AllReplies",
   "/single-reply/:id": "SingleReply",
   "/reply-message/:id": "ReplyMessage",
+  "/create-timetable": "CreateTimeTable",
+  "/all-timetables": "AllTimeTables",
+  "/single-faculty-timetable": "SingleFacultyTimetable",
   "/page-not-found": "404",
   "/404": "404",
 };
@@ -549,6 +556,24 @@ function LayoutInner() {
       showHero: false,
     },
 
+    "/create-timetable": {
+      heroTitle: "Create Time Table",
+      heroSubtitle: "",
+      showHero: false,
+    },
+
+    "/all-timetables": {
+      heroTitle: "All Time Tables",
+      heroSubtitle: "",
+      showHero: false,
+    },
+
+    "/single-faculty-timetable": {
+      heroTitle: "Single Faculty Time Tables",
+      heroSubtitle: "",
+      showHero: false,
+    },
+
     "/all-subscriptions": allSubscriptionsHero,
 
     "/all-messages": allMessagesHero,
@@ -700,6 +725,17 @@ function LayoutInner() {
               </RoleRoute>
             }
           />
+
+          {/* time table routs.  */}
+          <Route
+            path="/create-timetable"
+            element={
+              <RoleRoute allowedRoles={["superadmin"]}>
+                <CreateTimeTable />
+              </RoleRoute>
+            }
+          />
+
           <Route
             path="/assistant-professor-dashboard"
             element={
@@ -759,6 +795,24 @@ function LayoutInner() {
             element={
               <RoleRoute allowedRoles={["superadmin"]}>
                 <UpdateFaculty />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="/all-timetables"
+            element={
+              <RoleRoute allowedRoles={["superadmin", "faculty"]}>
+                <AllTimeTables />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="/single-faculty-timetable"
+            element={
+              <RoleRoute allowedRoles={["superadmin", "faculty"]}>
+                <SingleFacultyTimeTable />
               </RoleRoute>
             }
           />

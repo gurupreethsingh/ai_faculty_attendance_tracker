@@ -17,6 +17,7 @@ const userRoutes = require("./routes/UserRoutes");
 const contactRoutes = require("./routes/ContactRoutes");
 const subscriptionRoutes = require("./routes/SubscriptionRoutes");
 const facultyRoutes = require("./routes/FacultyRoutes");
+const timeTableRoutes = require("./routes/TimeTableRoutes");
 
 // =====================================================
 // CORS
@@ -92,6 +93,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/subscription", subscriptionRoutes);
 app.use("/api/faculty", facultyRoutes);
+app.use("/api/timetable", timeTableRoutes);
 
 // =====================================================
 // 404

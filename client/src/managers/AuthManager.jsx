@@ -14,17 +14,11 @@ const AuthContext = createContext(null);
 
 const API_BASE_URL = `${globalBackendRoute}/api`;
 
-// =====================================================
 // LOCAL STORAGE KEYS
-// =====================================================
-
 const TOKEN_KEY = "travel_token";
 const USER_KEY = "travel_user";
 
-// =====================================================
 // AXIOS INSTANCE
-// =====================================================
-
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
@@ -33,18 +27,11 @@ const api = axios.create({
   },
 });
 
-// =====================================================
 // HELPERS
-// =====================================================
-
 const normalizeEmail = (email = "") => String(email).trim().toLowerCase();
-
 const normalizeText = (value = "") => String(value).trim();
 
-// =====================================================
 // JWT PARSER
-// =====================================================
-
 const parseJwt = (token) => {
   try {
     if (!token) {
@@ -52,17 +39,13 @@ const parseJwt = (token) => {
     }
 
     const parts = token.split(".");
-
     if (parts.length !== 3) {
       return null;
     }
 
     const base64Url = parts[1];
-
     const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-
     const paddedBase64 = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-
     return JSON.parse(window.atob(paddedBase64));
   } catch (error) {
     console.error("JWT PARSE ERROR:", error);
@@ -70,18 +53,12 @@ const parseJwt = (token) => {
   }
 };
 
-// =====================================================
 // GET TOKEN FROM STORAGE
-// =====================================================
-
 const getStoredToken = () => {
   return localStorage.getItem(TOKEN_KEY) || "";
 };
 
-// =====================================================
 // SAVE SESSION
-// =====================================================
-
 const saveSession = (nextToken, nextUser) => {
   if (nextToken) {
     localStorage.setItem(TOKEN_KEY, nextToken);
@@ -96,10 +73,7 @@ const saveSession = (nextToken, nextUser) => {
   }
 };
 
-// =====================================================
 // DASHBOARD ROUTES
-// =====================================================
-
 const getDashboardPathByRole = (role) => {
   const normalizedRole = String(role || "")
     .trim()
@@ -109,72 +83,54 @@ const getDashboardPathByRole = (role) => {
     accountant: "/accountant-dashboard",
     admin: "/admin-dashboard",
     alumni_relations: "/alumni-relations-dashboard",
-
     assistant_professor: "/assistant-professor-dashboard",
     professor: "/professor-dashboard",
     faculty: "/faculty-dashboard",
     teacher: "/teacher-dashboard",
-
     business_analyst: "/business-analyst-dashboard",
     content_creator: "/content-creator-dashboard",
     course_coordinator: "/course-coordinator-dashboard",
     customer_support: "/customer-support-dashboard",
     data_scientist: "/data-scientist-dashboard",
-
     dean: "/dean-dashboard",
     department_head: "/department-head-dashboard",
     hod: "/hod-dashboard",
-
     developer_lead: "/developer-lead-dashboard",
     developer: "/developer-dashboard",
-
     event_coordinator: "/event-coordinator-dashboard",
     exam_controller: "/exam-controller-dashboard",
-
     hr_manager: "/hr-manager-dashboard",
     hr: "/hr-dashboard",
-
     intern: "/intern-dashboard",
     legal_advisor: "/legal-advisor-dashboard",
     librarian: "/librarian-dashboard",
     maintenance_staff: "/maintenance-staff-dashboard",
-
     marketing_manager: "/marketing-manager-dashboard",
     operations_manager: "/operations-manager-dashboard",
     product_owner: "/product-owner-dashboard",
     project_manager: "/project-manager-dashboard",
-
     qa_lead: "/qa-lead-dashboard",
     recruiter: "/recruiter-dashboard",
     registrar: "/registrar-dashboard",
     researcher: "/researcher-dashboard",
     sales_executive: "/sales-executive-dashboard",
-
     student: "/student-dashboard",
-
     superadmin: "/super-admin-dashboard",
-
     support_engineer: "/support-engineer-dashboard",
     tech_lead: "/tech-lead-dashboard",
     test_engineer: "/test-engineer-dashboard",
-
     user: "/user-dashboard",
-
     ux_ui_designer: "/ux-ui-designer-dashboard",
   };
 
   return dashboardRoutes[normalizedRole] || "/login";
 };
 
-// =====================================================
 // AUTH PROVIDER
-// =====================================================
-
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
     try {
       const storedUser = localStorage.getItem(USER_KEY);
-
       return storedUser ? JSON.parse(storedUser) : null;
     } catch (error) {
       console.error("USER STORAGE PARSE ERROR:", error);
@@ -187,16 +143,11 @@ export const AuthProvider = ({ children }) => {
   });
 
   const [loading, setLoading] = useState(true);
-
   const logoutTimerRef = useRef(null);
-
   const isRefreshingRef = useRef(false);
-
   const refreshSubscribersRef = useRef([]);
 
-  // ===================================================
   // CLEAR SESSION
-  // ===================================================
 
   const clearSession = () => {
     console.log("AUTH: Clearing session");
@@ -215,9 +166,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ===================================================
   // SCHEDULE AUTO LOGOUT
-  // ===================================================
 
   const scheduleAutoLogout = (accessToken) => {
     if (logoutTimerRef.current) {
@@ -259,9 +208,7 @@ export const AuthProvider = ({ children }) => {
     }, delay);
   };
 
-  // ===================================================
   // UPDATE AXIOS TOKEN
-  // ===================================================
 
   useEffect(() => {
     if (token) {
@@ -273,9 +220,7 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
-  // ===================================================
   // TOKEN REFRESH SUBSCRIBERS
-  // ===================================================
 
   const subscribeTokenRefresh = (callback) => {
     refreshSubscribersRef.current.push(callback);
@@ -289,9 +234,7 @@ export const AuthProvider = ({ children }) => {
     refreshSubscribersRef.current = [];
   };
 
-  // ===================================================
   // REFRESH ACCESS TOKEN
-  // ===================================================
 
   const refreshAccessToken = async () => {
     console.log("AUTH: Trying to refresh access token...");
@@ -333,9 +276,7 @@ export const AuthProvider = ({ children }) => {
     return newToken;
   };
 
-  // ===================================================
   // AXIOS INTERCEPTORS
-  // ===================================================
 
   useEffect(() => {
     const requestInterceptor = api.interceptors.request.use(
@@ -387,9 +328,7 @@ export const AuthProvider = ({ children }) => {
 
         const isRefreshRequest = requestUrl.includes("/users/refresh-token");
 
-        // ===============================================
         // HANDLE 401
-        // ===============================================
 
         if (
           status === 401 &&
@@ -398,9 +337,7 @@ export const AuthProvider = ({ children }) => {
           !isRegisterRequest &&
           !isRefreshRequest
         ) {
-          // =============================================
           // ANOTHER REFRESH IS ALREADY RUNNING
-          // =============================================
 
           if (isRefreshingRef.current) {
             return new Promise((resolve, reject) => {
@@ -418,9 +355,7 @@ export const AuthProvider = ({ children }) => {
             });
           }
 
-          // =============================================
           // START REFRESH
-          // =============================================
 
           originalRequest._retry = true;
 
@@ -473,9 +408,7 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  // ===================================================
   // BOOTSTRAP AUTHENTICATION
-  // ===================================================
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -549,9 +482,7 @@ export const AuthProvider = ({ children }) => {
     bootstrap();
   }, []);
 
-  // ===================================================
   // REGISTER
-  // ===================================================
 
   const register = async (payload) => {
     const sanitizedPayload = {
@@ -593,9 +524,7 @@ export const AuthProvider = ({ children }) => {
     return res.data;
   };
 
-  // ===================================================
   // LOGIN
-  // ===================================================
 
   const login = async (payload) => {
     const sanitizedPayload = {
@@ -624,9 +553,7 @@ export const AuthProvider = ({ children }) => {
 
     console.log("LOGIN TOKEN:", nextToken ? "FOUND" : "MISSING");
 
-    // ===============================================
     // VERY IMPORTANT
-    // ===============================================
 
     if (!nextToken) {
       console.error(
@@ -639,9 +566,7 @@ export const AuthProvider = ({ children }) => {
       );
     }
 
-    // ===============================================
     // SAVE USER + TOKEN
-    // ===============================================
 
     setUser(nextUser);
 
@@ -649,9 +574,7 @@ export const AuthProvider = ({ children }) => {
 
     saveSession(nextToken, nextUser);
 
-    // ===============================================
     // SET AXIOS AUTHORIZATION HEADER
-    // ===============================================
 
     api.defaults.headers.common.Authorization = `Bearer ${nextToken}`;
 
@@ -664,9 +587,7 @@ export const AuthProvider = ({ children }) => {
     return res.data;
   };
 
-  // ===================================================
   // LOGOUT
-  // ===================================================
 
   const logout = async () => {
     try {
@@ -681,9 +602,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ===================================================
   // FORGOT PASSWORD
-  // ===================================================
 
   const forgotPassword = async (email) => {
     const res = await api.post("/users/forgot-password", {
@@ -693,9 +612,7 @@ export const AuthProvider = ({ children }) => {
     return res.data;
   };
 
-  // ===================================================
   // RESET PASSWORD
-  // ===================================================
 
   const resetPassword = async (tokenValue, password) => {
     const res = await api.put(`/users/reset-password/${tokenValue}`, {
@@ -705,51 +622,34 @@ export const AuthProvider = ({ children }) => {
     return res.data;
   };
 
-  // ===================================================
   // FETCH PROFILE
-  // ===================================================
 
   const fetchProfile = async () => {
     const res = await api.get("/users/me");
-
     const nextUser = res?.data?.user || null;
-
     setUser(nextUser);
-
     localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-
     return nextUser;
   };
 
-  // ===================================================
   // UPDATE PROFILE
-  // ===================================================
 
   const updateProfile = async (payload) => {
     const res = await api.put("/users/update-profile", payload);
-
     const nextUser = res?.data?.user || null;
-
     setUser(nextUser);
-
     localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-
     return res.data;
   };
 
-  // ===================================================
   // GET ALL USERS
-  // ===================================================
 
   const getAllUsers = async () => {
     const res = await api.get("/users/all-users");
-
     return res?.data?.users || [];
   };
 
-  // ===================================================
   // UPDATE USER ROLE
-  // ===================================================
 
   const updateUserRole = async (id, role) => {
     const res = await api.put(`/users/update-role/${id}`, {
@@ -759,42 +659,25 @@ export const AuthProvider = ({ children }) => {
     return res.data;
   };
 
-  // ===================================================
   // CONTEXT VALUE
-  // ===================================================
 
   const value = useMemo(
     () => ({
       api,
-
       user,
-
       token,
-
       loading,
-
       authLoading: loading,
-
       isAuthenticated: !!token,
-
       register,
-
       login,
-
       logout,
-
       forgotPassword,
-
       resetPassword,
-
       fetchProfile,
-
       updateProfile,
-
       getAllUsers,
-
       updateUserRole,
-
       getDashboardPathByRole,
     }),
     [user, token, loading],
@@ -803,15 +686,11 @@ export const AuthProvider = ({ children }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// =====================================================
 // USE AUTH
-// =====================================================
 
 export const useAuth = () => useContext(AuthContext);
 
-// =====================================================
 // PRIVATE ROUTE
-// =====================================================
 
 export const PrivateRoute = ({ children }) => {
   const { loading, isAuthenticated } = useAuth();
@@ -827,9 +706,7 @@ export const PrivateRoute = ({ children }) => {
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
-// =====================================================
 // ADMIN ROUTE
-// =====================================================
 
 export const AdminRoute = ({ children }) => {
   const { loading, isAuthenticated, user } = useAuth();
@@ -850,9 +727,7 @@ export const AdminRoute = ({ children }) => {
   );
 };
 
-// =====================================================
 // ROLE ROUTE
-// =====================================================
 
 export const RoleRoute = ({ children, allowedRoles = [] }) => {
   const { loading, isAuthenticated, user } = useAuth();
@@ -884,9 +759,7 @@ export const RoleRoute = ({ children, allowedRoles = [] }) => {
   return children;
 };
 
-// =====================================================
 // PUBLIC ROUTE
-// =====================================================
 
 export const PublicRoute = ({ children }) => {
   const { loading, isAuthenticated, user, getDashboardPathByRole } = useAuth();

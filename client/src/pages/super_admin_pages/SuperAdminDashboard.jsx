@@ -478,11 +478,23 @@ export default function SuperAdminDashboard() {
           />
 
           <ActionLink
+            to="/create-timetable"
+            label="Create Time Table"
+            variant="success"
+          />
+
+          <ActionLink
             to="/all-faculties"
             label="All Faculties"
             variant="success"
           />
           <ActionLink to="/all-replies" label="View Replies" variant="purple" />
+
+          <ActionLink
+            to="/all-timetables"
+            label="All Time Tables"
+            variant="purple"
+          />
           <ActionLink
             to="/all-subscriptions"
             label="Subscriptions"

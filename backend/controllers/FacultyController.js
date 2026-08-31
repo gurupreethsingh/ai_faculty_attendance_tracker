@@ -537,9 +537,7 @@ exports.createFaculty = async (req, res) => {
         // ---------------------------------------------
 
         if (email !== undefined) {
-          const normalizedEmail = String(email)
-            .trim()
-            .toLowerCase();
+          const normalizedEmail = String(email).trim().toLowerCase();
 
           if (!normalizedEmail) {
             return res.status(400).json({
@@ -623,9 +621,7 @@ exports.createFaculty = async (req, res) => {
         }
 
         if (preferredCurrency !== undefined) {
-          user.preferredCurrency = String(
-            preferredCurrency,
-          ).trim();
+          user.preferredCurrency = String(preferredCurrency).trim();
         }
 
         if (profileImage !== undefined) {
@@ -660,14 +656,10 @@ exports.createFaculty = async (req, res) => {
           department: String(department).trim(),
 
           qualification:
-            qualification !== undefined
-              ? String(qualification).trim()
-              : "",
+            qualification !== undefined ? String(qualification).trim() : "",
 
           specialization:
-            specialization !== undefined
-              ? String(specialization).trim()
-              : "",
+            specialization !== undefined ? String(specialization).trim() : "",
 
           experience:
             experience === undefined || experience === ""
@@ -693,9 +685,7 @@ exports.createFaculty = async (req, res) => {
         // POPULATE USER
         // =============================================
 
-        const populatedFaculty = await Faculty.findById(
-          faculty._id,
-        ).populate({
+        const populatedFaculty = await Faculty.findById(faculty._id).populate({
           path: "userId",
           select:
             "fullName email phone dateOfBirth gender addressLine1 addressLine2 city state country postalCode nationality preferredCurrency profileImage role isActive",
@@ -708,8 +698,7 @@ exports.createFaculty = async (req, res) => {
         return res.status(201).json({
           success: true,
 
-          message:
-            "Existing user converted to faculty successfully.",
+          message: "Existing user converted to faculty successfully.",
 
           faculty: populatedFaculty,
         });
@@ -732,10 +721,7 @@ exports.createFaculty = async (req, res) => {
             },
           );
         } catch (rollbackError) {
-          console.error(
-            "USER ROLLBACK ERROR:",
-            rollbackError,
-          );
+          console.error("USER ROLLBACK ERROR:", rollbackError);
         }
 
         throw error;
@@ -751,8 +737,7 @@ exports.createFaculty = async (req, res) => {
     if (!password || !String(password).trim()) {
       return res.status(400).json({
         success: false,
-        message:
-          "Password is required when creating a new faculty account.",
+        message: "Password is required when creating a new faculty account.",
       });
     }
 
@@ -781,9 +766,7 @@ exports.createFaculty = async (req, res) => {
       });
     }
 
-    const normalizedEmail = String(email)
-      .trim()
-      .toLowerCase();
+    const normalizedEmail = String(email).trim().toLowerCase();
 
     const emailRegex = /^\S+@\S+\.\S+$/;
 
@@ -824,52 +807,28 @@ exports.createFaculty = async (req, res) => {
 
       isActive: true,
 
-      phone:
-        phone !== undefined
-          ? String(phone).trim()
-          : "",
+      phone: phone !== undefined ? String(phone).trim() : "",
 
       dateOfBirth: dateOfBirth || null,
 
-      gender:
-        gender !== undefined
-          ? String(gender).trim()
-          : "",
+      gender: gender !== undefined ? String(gender).trim() : "",
 
       addressLine1:
-        addressLine1 !== undefined
-          ? String(addressLine1).trim()
-          : "",
+        addressLine1 !== undefined ? String(addressLine1).trim() : "",
 
       addressLine2:
-        addressLine2 !== undefined
-          ? String(addressLine2).trim()
-          : "",
+        addressLine2 !== undefined ? String(addressLine2).trim() : "",
 
-      city:
-        city !== undefined
-          ? String(city).trim()
-          : "",
+      city: city !== undefined ? String(city).trim() : "",
 
-      state:
-        state !== undefined
-          ? String(state).trim()
-          : "",
+      state: state !== undefined ? String(state).trim() : "",
 
-      country:
-        country !== undefined
-          ? String(country).trim()
-          : "India",
+      country: country !== undefined ? String(country).trim() : "India",
 
-      postalCode:
-        postalCode !== undefined
-          ? String(postalCode).trim()
-          : "",
+      postalCode: postalCode !== undefined ? String(postalCode).trim() : "",
 
       nationality:
-        nationality !== undefined
-          ? String(nationality).trim()
-          : "Indian",
+        nationality !== undefined ? String(nationality).trim() : "Indian",
 
       preferredCurrency:
         preferredCurrency !== undefined
@@ -877,9 +836,7 @@ exports.createFaculty = async (req, res) => {
           : "INR",
 
       profileImage:
-        profileImage !== undefined
-          ? String(profileImage).trim()
-          : "",
+        profileImage !== undefined ? String(profileImage).trim() : "",
     });
 
     try {
@@ -893,14 +850,10 @@ exports.createFaculty = async (req, res) => {
         department: String(department).trim(),
 
         qualification:
-          qualification !== undefined
-            ? String(qualification).trim()
-            : "",
+          qualification !== undefined ? String(qualification).trim() : "",
 
         specialization:
-          specialization !== undefined
-            ? String(specialization).trim()
-            : "",
+          specialization !== undefined ? String(specialization).trim() : "",
 
         experience:
           experience === undefined || experience === ""
@@ -913,13 +866,9 @@ exports.createFaculty = async (req, res) => {
 
         status: status || "active",
 
-        subjects: Array.isArray(subjects)
-          ? subjects
-          : [],
+        subjects: Array.isArray(subjects) ? subjects : [],
 
-        classes: Array.isArray(classes)
-          ? classes
-          : [],
+        classes: Array.isArray(classes) ? classes : [],
 
         isDeleted: false,
 
@@ -930,9 +879,7 @@ exports.createFaculty = async (req, res) => {
       // POPULATE USER
       // ---------------------------------------------
 
-      const populatedFaculty = await Faculty.findById(
-        faculty._id,
-      ).populate({
+      const populatedFaculty = await Faculty.findById(faculty._id).populate({
         path: "userId",
         select:
           "fullName email phone dateOfBirth gender addressLine1 addressLine2 city state country postalCode nationality preferredCurrency profileImage role isActive",
@@ -941,8 +888,7 @@ exports.createFaculty = async (req, res) => {
       return res.status(201).json({
         success: true,
 
-        message:
-          "New faculty account created successfully.",
+        message: "New faculty account created successfully.",
 
         faculty: populatedFaculty,
       });
@@ -954,10 +900,7 @@ exports.createFaculty = async (req, res) => {
       try {
         await User.findByIdAndDelete(newUser._id);
       } catch (deleteError) {
-        console.error(
-          "NEW USER ROLLBACK ERROR:",
-          deleteError,
-        );
+        console.error("NEW USER ROLLBACK ERROR:", deleteError);
       }
 
       throw facultyCreationError;
@@ -966,9 +909,7 @@ exports.createFaculty = async (req, res) => {
     console.error("createFaculty error:", error);
 
     if (error?.code === 11000) {
-      const duplicateFields = Object.keys(
-        error.keyPattern || {},
-      );
+      const duplicateFields = Object.keys(error.keyPattern || {});
 
       return res.status(409).json({
         success: false,
@@ -979,9 +920,7 @@ exports.createFaculty = async (req, res) => {
     }
 
     if (error?.name === "ValidationError") {
-      const errors = Object.values(error.errors).map(
-        (err) => err.message,
-      );
+      const errors = Object.values(error.errors).map((err) => err.message);
 
       return res.status(400).json({
         success: false,
@@ -998,8 +937,6 @@ exports.createFaculty = async (req, res) => {
   }
 };
 
-// UPDATE FACULTY
-
 exports.updateFaculty = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1015,12 +952,16 @@ exports.updateFaculty = async (req, res) => {
     let user = null;
 
     if (faculty) {
-      user = await User.findById(faculty.userId);
+      if (faculty.userId) {
+        user = await User.findById(faculty.userId);
+      }
     } else {
       user = await User.findById(id);
 
       if (user) {
-        faculty = await Faculty.findOne({ userId: user._id });
+        faculty = await Faculty.findOne({
+          userId: user._id,
+        });
       }
     }
 
@@ -1072,6 +1013,8 @@ exports.updateFaculty = async (req, res) => {
       employmentType,
       joiningDate,
       status,
+      subjects,
+      classes,
     } = req.body;
 
     if (fullName !== undefined) {
@@ -1220,12 +1163,19 @@ exports.updateFaculty = async (req, res) => {
     }
 
     if (department !== undefined) {
-      if (department === null || department === "") {
-        faculty.department = department;
+      if (department === null) {
+        faculty.department = "";
       } else if (typeof department === "object" && department._id) {
-        faculty.department = department._id;
+        faculty.department = String(department._id);
       } else {
         faculty.department = String(department).trim();
+      }
+
+      if (!faculty.department) {
+        return res.status(400).json({
+          success: false,
+          message: "Department is required.",
+        });
       }
     }
 
@@ -1299,17 +1249,98 @@ exports.updateFaculty = async (req, res) => {
       if (!allowedStatuses.includes(normalizedStatus)) {
         return res.status(400).json({
           success: false,
-          message: "Invalid faculty status.",
+          message:
+            "Invalid faculty status. Allowed values: active, inactive, on_leave, retired.",
         });
       }
 
       faculty.status = normalizedStatus;
+      user.isActive = normalizedStatus === "active";
+    }
 
-      if (normalizedStatus === "active") {
-        user.isActive = true;
-      } else {
-        user.isActive = false;
+    if (subjects !== undefined) {
+      if (!Array.isArray(subjects)) {
+        return res.status(400).json({
+          success: false,
+          message: "Subjects must be an array.",
+        });
       }
+
+      const normalizedSubjects = [];
+      const subjectCodes = new Set();
+
+      for (const subject of subjects) {
+        if (!subject || typeof subject !== "object") {
+          return res.status(400).json({
+            success: false,
+            message: "Each subject must be an object.",
+          });
+        }
+
+        const subjectCode = String(subject.subjectCode || "").trim();
+
+        const subjectName = String(subject.subjectName || "").trim();
+
+        if (!subjectCode || !subjectName) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Every subject must have both subject code and subject name.",
+          });
+        }
+
+        const codeKey = subjectCode.toLowerCase();
+
+        if (subjectCodes.has(codeKey)) {
+          return res.status(409).json({
+            success: false,
+            message: `Duplicate subject code "${subjectCode}" found.`,
+          });
+        }
+
+        subjectCodes.add(codeKey);
+
+        normalizedSubjects.push({
+          subjectCode,
+          subjectName,
+        });
+      }
+
+      faculty.subjects = normalizedSubjects;
+    }
+
+    if (classes !== undefined) {
+      if (!Array.isArray(classes)) {
+        return res.status(400).json({
+          success: false,
+          message: "Classes must be an array.",
+        });
+      }
+
+      const normalizedClasses = [];
+      const classNames = new Set();
+
+      for (const classItem of classes) {
+        const className = String(classItem || "").trim();
+
+        if (!className) {
+          continue;
+        }
+
+        const classKey = className.toLowerCase();
+
+        if (classNames.has(classKey)) {
+          return res.status(409).json({
+            success: false,
+            message: `Duplicate class "${className}" found.`,
+          });
+        }
+
+        classNames.add(classKey);
+        normalizedClasses.push(className);
+      }
+
+      faculty.classes = normalizedClasses;
     }
 
     await user.save();
@@ -1338,7 +1369,7 @@ exports.updateFaculty = async (req, res) => {
   } catch (error) {
     console.error("UPDATE FACULTY ERROR:", error);
 
-    if (error.code === 11000) {
+    if (error?.code === 11000) {
       const duplicateFields = Object.keys(
         error.keyPattern || error.keyValue || {},
       );
@@ -1351,7 +1382,7 @@ exports.updateFaculty = async (req, res) => {
       });
     }
 
-    if (error.name === "ValidationError") {
+    if (error?.name === "ValidationError") {
       const errors = {};
 
       Object.keys(error.errors || {}).forEach((field) => {
@@ -1367,13 +1398,12 @@ exports.updateFaculty = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: error.message || "Failed to update faculty and user.",
+      message: error?.message || "Failed to update faculty and user.",
     });
   }
 };
 
 // UPDATE MY FACULTY PROFILE
-
 exports.updateMyFacultyProfile = async (req, res) => {
   try {
     const userId = req.user?._id || req.user?.id;

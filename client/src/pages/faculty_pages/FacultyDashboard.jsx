@@ -1,2653 +1,1941 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
-  ArrowDownAZ,
-  ArrowUpAZ,
   BookOpen,
   Calendar,
-  CalendarCheck,
   CalendarDays,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  ClipboardCheck,
-  Clock3,
+  ChevronDown,
   Download,
   FileSpreadsheet,
   FileText,
   Filter,
   GraduationCap,
-  ListFilter,
-  Printer,
+  Layers,
+  MapPin,
   RefreshCw,
   Search,
-  Settings2,
   Users,
-  XCircle,
-  RotateCcw,
-  AlertTriangle,
-  Edit3,
-  MoreHorizontal,
+  X,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../managers/AuthManager";
+import axios from "axios";
+import globalBackendRoute from "../../config/Config";
 
-// =====================================================
-// API ENDPOINTS
-// IMPORTANT:
-// These match the FacultyRoutes.js you provided.
-// No new timetable / attendance APIs are required here.
-// =====================================================
+const DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
-const API_ENDPOINTS = {
-  profile: "/faculty/get-my-faculty-profile",
+const SLOT_TYPES = [
+  "subject",
+  "lab",
+  "break",
+  "short-break",
+  "lunch",
+  "sports",
+  "library",
+  "activity",
+  "doubt-session",
+  "cultural",
+  "outdoor-activity",
+  "indoor-activity",
+  "free",
+  "other",
+];
 
-  // Existing dummy timetable endpoint.
-  // Requires faculty ID.
-  timetable: (facultyId) => `/faculty/get-faculty-timetable/${facultyId}`,
+const SESSION_TYPES = ["theory", "lab", "activity", "other"];
 
-  // Existing dummy attendance endpoint.
-  // Requires faculty ID.
-  attendance: (facultyId) => `/faculty/get-faculty-attendance/${facultyId}`,
-};
+/* =========================================================================
+   HELPERS
+   ========================================================================= */
 
-// =====================================================
-// NAVIGATION
-// Change these only if your actual frontend routes differ.
-// =====================================================
-
-const NAVIGATION = {
-  timetable: "/faculty/timetable",
-  classTracking: "/faculty/class-tracking",
-  attendance: "/faculty/attendance",
-  profile: "/faculty/profile",
-};
-
-// =====================================================
-// HELPERS
-// =====================================================
-
-function safeArray(payload, keys = []) {
-  if (Array.isArray(payload)) {
-    return payload;
+const normalize = (value) => {
+  if (value === null || value === undefined) {
+    return "";
   }
 
-  for (const key of keys) {
-    if (Array.isArray(payload?.[key])) {
-      return payload[key];
+  return String(value).trim();
+};
+
+const normalizeLower = (value) => normalize(value).toLowerCase();
+
+const getToken = () => {
+  return (
+    localStorage.getItem("travel_token") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("access_token") ||
+    ""
+  );
+};
+
+const getStoredUser = () => {
+  const possibleKeys = ["travel_user", "user", "currentUser", "authUser"];
+
+  for (const key of possibleKeys) {
+    try {
+      const value = localStorage.getItem(key);
+
+      if (!value) {
+        continue;
+      }
+
+      return JSON.parse(value);
+    } catch {
+      // Ignore malformed localStorage values.
     }
   }
 
-  if (Array.isArray(payload?.data)) {
-    return payload.data;
-  }
+  return null;
+};
 
-  if (Array.isArray(payload?.data?.data)) {
-    return payload.data.data;
-  }
+const getResponseData = (response) => {
+  const data = response?.data;
 
-  return [];
-}
-
-function unwrapData(payload) {
-  return (
-    payload?.data?.data ||
-    payload?.data?.faculty ||
-    payload?.data?.attendance ||
-    payload?.data?.timetable ||
-    payload?.data ||
-    payload ||
-    null
-  );
-}
-
-function getStartOfWeek(date) {
-  const current = new Date(date);
-  const day = current.getDay();
-  const difference = day === 0 ? -6 : 1 - day;
-
-  current.setDate(current.getDate() + difference);
-  current.setHours(0, 0, 0, 0);
-
-  return current;
-}
-
-function getEndOfWeek(date) {
-  const start = getStartOfWeek(date);
-  const end = new Date(start);
-
-  end.setDate(start.getDate() + 6);
-  end.setHours(23, 59, 59, 999);
-
-  return end;
-}
-
-function formatDate(date) {
-  if (!date) return "-";
-
-  const value = new Date(date);
-
-  if (Number.isNaN(value.getTime())) {
-    return String(date);
-  }
-
-  return value.toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function formatShortDate(date) {
-  if (!date) return "-";
-
-  const value = new Date(date);
-
-  if (Number.isNaN(value.getTime())) {
-    return String(date);
-  }
-
-  return value.toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "short",
-  });
-}
-
-function formatDay(date) {
-  if (!date) return "-";
-
-  const value = new Date(date);
-
-  if (Number.isNaN(value.getTime())) {
-    return "-";
-  }
-
-  return value.toLocaleDateString(undefined, {
-    weekday: "long",
-  });
-}
-
-function getScheduleDate(item) {
-  return (
-    item?.date ||
-    item?.classDate ||
-    item?.scheduledDate ||
-    item?.startDate ||
-    item?.dayDate ||
-    item?.scheduleDate ||
-    null
-  );
-}
-
-function getScheduleDateObject(item) {
-  const date = getScheduleDate(item);
-
-  if (!date) {
+  if (!data) {
     return null;
   }
 
-  const parsed = new Date(date);
-
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function getSubject(item) {
-  return (
-    item?.subjectName ||
-    item?.subject ||
-    item?.courseName ||
-    item?.course ||
-    item?.subjectCode ||
-    "Subject"
-  );
-}
-
-function getClassName(item) {
-  return (
-    item?.className ||
-    item?.class ||
-    item?.batch ||
-    item?.section ||
-    item?.classSection ||
-    "Class"
-  );
-}
-
-function getRoom(item) {
-  return (
-    item?.room || item?.roomNumber || item?.classRoom || item?.classroom || "-"
-  );
-}
-
-function getStartTime(item) {
-  return (
-    item?.startTime ||
-    item?.fromTime ||
-    item?.start ||
-    item?.timeFrom ||
-    item?.start_time ||
-    ""
-  );
-}
-
-function getEndTime(item) {
-  return (
-    item?.endTime ||
-    item?.toTime ||
-    item?.end ||
-    item?.timeTo ||
-    item?.end_time ||
-    ""
-  );
-}
-
-function formatTime(value) {
-  if (!value) {
-    return "-";
+  if (data.timetable) {
+    return data.timetable;
   }
 
-  if (typeof value === "string" && /^\d{1,2}:\d{2}/.test(value.trim())) {
-    return value;
+  if (data.data) {
+    return data.data;
   }
 
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
+  if (data.result) {
+    return data.result;
   }
 
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+  return data;
+};
 
-function getScheduleStatus(item) {
-  const raw =
-    item?.status ||
-    item?.classStatus ||
-    item?.attendanceStatus ||
-    (item?.isCancelled ? "cancelled" : "scheduled");
+const getTimetableFromResponse = (response) => {
+  const payload = getResponseData(response);
 
-  const status = String(raw || "scheduled")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_");
-
-  if (status === "canceled" || status === "cancelled" || status === "cancel") {
-    return "cancelled";
+  if (!payload) {
+    return null;
   }
 
-  if (
-    status === "completed" ||
-    status === "taken" ||
-    status === "class_taken" ||
-    status === "done"
-  ) {
-    return "completed";
+  if (Array.isArray(payload)) {
+    return payload[0] || null;
   }
 
-  if (
-    status === "not_taken" ||
-    status === "not-taken" ||
-    status === "not taken"
-  ) {
-    return "not_taken";
+  if (Array.isArray(payload.timetables)) {
+    return payload.timetables[0] || null;
   }
 
-  if (
-    status === "rescheduled" ||
-    status === "reschedule" ||
-    status === "reschedule_required"
-  ) {
-    return "rescheduled";
+  if (Array.isArray(payload.data)) {
+    return payload.data[0] || null;
   }
 
-  return "scheduled";
-}
+  return payload;
+};
 
-function getTopic(item) {
-  return (
-    item?.topic ||
-    item?.classTopic ||
-    item?.topicName ||
-    item?.lectureTopic ||
-    item?.lessonTopic ||
-    ""
-  );
-}
-
-function getReason(item) {
-  return (
-    item?.cancellationReason ||
-    item?.cancelReason ||
-    item?.reason ||
-    item?.remarks ||
-    ""
-  );
-}
-
-function getAttendancePercentage(item) {
-  const value =
-    item?.attendancePercentage ??
-    item?.percentage ??
-    item?.attendancePercent ??
-    item?.presentPercentage ??
-    0;
-
+const parsePeriodNumber = (value) => {
   const number = Number(value);
 
-  return Number.isFinite(number) ? number : 0;
-}
+  if (!Number.isFinite(number)) {
+    return null;
+  }
 
-function getFacultyId(faculty) {
-  return (
-    faculty?._id ||
-    faculty?.id ||
-    faculty?.facultyId ||
-    faculty?.data?._id ||
-    null
-  );
-}
+  return number;
+};
 
-function escapeHtml(value) {
+const formatTime = (value) => {
+  const time = normalize(value);
+
+  if (!time) {
+    return "--";
+  }
+
+  return time;
+};
+
+const formatSlotType = (value) => {
+  const text = normalize(value);
+
+  if (!text) {
+    return "Subject";
+  }
+
+  return text
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+const formatSessionType = (value) => {
+  const text = normalize(value);
+
+  if (!text) {
+    return "";
+  }
+
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
+
+const escapeHtml = (value) => {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
-}
+};
 
-function downloadBlob(content, filename, type) {
-  const blob = new Blob([content], { type });
+const escapeCsv = (value) => {
+  const text = String(value ?? "");
+
+  if (
+    text.includes(",") ||
+    text.includes('"') ||
+    text.includes("\n") ||
+    text.includes("\r")
+  ) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  return text;
+};
+
+const downloadBlob = (content, fileName, mimeType) => {
+  const blob = new Blob([content], {
+    type: mimeType,
+  });
+
   const url = window.URL.createObjectURL(blob);
 
   const anchor = document.createElement("a");
+
   anchor.href = url;
-  anchor.download = filename;
+  anchor.download = fileName;
 
   document.body.appendChild(anchor);
+
   anchor.click();
+
   anchor.remove();
 
   window.URL.revokeObjectURL(url);
-}
+};
 
-// =====================================================
-// STATUS BADGE
-// =====================================================
-
-function StatusBadge({ status }) {
-  const normalized = String(status || "scheduled").toLowerCase();
-
-  const configuration = {
-    completed: {
-      label: "Completed",
-      icon: CheckCircle2,
-      className: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    },
-
-    cancelled: {
-      label: "Cancelled",
-      icon: XCircle,
-      className: "bg-rose-50 text-rose-700 ring-rose-200",
-    },
-
-    not_taken: {
-      label: "Not Taken",
-      icon: AlertTriangle,
-      className: "bg-amber-50 text-amber-700 ring-amber-200",
-    },
-
-    rescheduled: {
-      label: "Rescheduled",
-      icon: RotateCcw,
-      className: "bg-purple-50 text-purple-700 ring-purple-200",
-    },
-
-    scheduled: {
-      label: "Scheduled",
-      icon: CalendarCheck,
-      className: "bg-indigo-50 text-indigo-700 ring-indigo-200",
-    },
-  };
-
-  const config = configuration[normalized] || configuration.scheduled;
-  const Icon = config.icon;
-
+const getFileSafeName = (value) => {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ${config.className}`}
-    >
-      <Icon size={13} />
-      {config.label}
-    </span>
+    normalize(value)
+      .replace(/[^a-zA-Z0-9-_]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "Faculty_Timetable"
   );
-}
+};
 
-// =====================================================
-// STAT CARD
-// =====================================================
-
-function StatCard({ title, value, subtitle, accent = "indigo", icon: Icon }) {
-  const accentMap = {
-    indigo: "bg-indigo-50 text-indigo-700",
-    emerald: "bg-emerald-50 text-emerald-700",
-    amber: "bg-amber-50 text-amber-700",
-    rose: "bg-rose-50 text-rose-700",
-    purple: "bg-purple-50 text-purple-700",
-    sky: "bg-sky-50 text-sky-700",
-  };
-
+function StatCard({ title, value, subtitle, icon: Icon, className = "" }) {
   return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-      <div className="flex items-start justify-between gap-3">
+    <div
+      className={`rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10 ${className}`}
+    >
+      <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
             {title}
           </div>
 
-          <div className="mt-2 text-3xl font-bold tracking-tight text-gray-900">
-            {value}
-          </div>
+          <div className="mt-2 text-2xl font-bold text-gray-900">{value}</div>
 
-          {subtitle ? (
-            <div className="mt-2 text-sm text-gray-500">{subtitle}</div>
-          ) : null}
+          <div className="mt-1 text-xs text-gray-500">{subtitle}</div>
         </div>
 
-        <div
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
-            accentMap[accent] || accentMap.indigo
-          }`}
-        >
-          {Icon ? <Icon size={20} /> : null}
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+          <Icon size={19} />
         </div>
       </div>
     </div>
   );
 }
 
-// =====================================================
-// QUICK ACTION
-// =====================================================
+function Badge({ children, type = "default" }) {
+  const styles = {
+    default: "bg-gray-100 text-gray-700",
+    indigo: "bg-indigo-50 text-indigo-700",
+    emerald: "bg-emerald-50 text-emerald-700",
+    amber: "bg-amber-50 text-amber-700",
+    purple: "bg-purple-50 text-purple-700",
+    sky: "bg-sky-50 text-sky-700",
+    rose: "bg-rose-50 text-rose-700",
+  };
 
-function QuickAction({
-  icon: Icon,
-  title,
-  description,
-  onClick,
-  disabled = false,
-}) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="group rounded-2xl bg-white p-5 text-left shadow-sm ring-1 ring-gray-900/10 transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold ${styles[type] || styles.default}`}
     >
-      <div className="flex items-start gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 transition group-hover:bg-indigo-100">
-          <Icon size={20} />
-        </div>
-
-        <div className="min-w-0">
-          <div className="font-semibold text-gray-900">{title}</div>
-
-          <div className="mt-1 text-sm leading-5 text-gray-500">
-            {description}
-          </div>
-        </div>
-      </div>
-    </button>
+      {children}
+    </span>
   );
 }
 
-// =====================================================
-// FACULTY DASHBOARD
-// =====================================================
+function EmptyCell() {
+  return (
+    <div className="flex min-h-[130px] items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/60">
+      <span className="text-xs font-medium text-gray-300">Free</span>
+    </div>
+  );
+}
+
+function TimetableCell({ entry }) {
+  if (!entry) {
+    return <EmptyCell />;
+  }
+
+  const slotType = normalizeLower(entry.slotType);
+  const sessionType = normalizeLower(entry.sessionType);
+
+  const isBreak =
+    slotType === "break" || slotType === "short-break" || slotType === "lunch";
+
+  const isFree = slotType === "free";
+
+  if (isBreak || isFree) {
+    return (
+      <div className="flex min-h-[130px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center">
+        <div className="text-sm font-bold text-gray-500">
+          {formatSlotType(entry.slotType)}
+        </div>
+
+        {entry.startTime || entry.endTime ? (
+          <div className="mt-1 text-[11px] text-gray-400">
+            {formatTime(entry.startTime)} - {formatTime(entry.endTime)}
+          </div>
+        ) : null}
+
+        {entry.remarks ? (
+          <div className="mt-2 text-[10px] text-gray-400">{entry.remarks}</div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-[130px] rounded-xl border border-gray-100 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-bold text-gray-900">
+            {normalize(entry.subjectCode) ||
+              normalize(entry.subjectName) ||
+              "Untitled Subject"}
+          </div>
+
+          {entry.subjectCode && entry.subjectName ? (
+            <div className="mt-1 line-clamp-2 text-xs font-medium text-gray-600">
+              {entry.subjectName}
+            </div>
+          ) : null}
+        </div>
+
+        {sessionType ? (
+          <Badge
+            type={
+              sessionType === "lab"
+                ? "purple"
+                : sessionType === "theory"
+                  ? "indigo"
+                  : "sky"
+            }
+          >
+            {formatSessionType(entry.sessionType)}
+          </Badge>
+        ) : null}
+      </div>
+
+      <div className="mt-3 space-y-1.5">
+        {entry.className ? (
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
+            <Users size={12} className="shrink-0 text-indigo-500" />
+
+            <span className="truncate font-medium">{entry.className}</span>
+          </div>
+        ) : null}
+
+        {(entry.program || entry.branch || entry.semester) && (
+          <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+            <GraduationCap size={11} className="shrink-0 text-gray-400" />
+
+            <span className="truncate">
+              {[entry.program, entry.branch, entry.semester]
+                .filter(Boolean)
+                .join(" • ")}
+            </span>
+          </div>
+        )}
+
+        {entry.section ? (
+          <div className="text-[10px] text-gray-500">
+            Section: <span className="font-semibold">{entry.section}</span>
+          </div>
+        ) : null}
+
+        {entry.roomNo ? (
+          <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+            <MapPin size={11} className="shrink-0 text-gray-400" />
+
+            <span>Room {entry.roomNo}</span>
+          </div>
+        ) : null}
+      </div>
+
+      {entry.remarks ? (
+        <div className="mt-3 border-t border-gray-100 pt-2 text-[10px] text-gray-400">
+          {entry.remarks}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* =========================================================================
+   MAIN COMPONENT
+   ========================================================================= */
 
 export default function FacultyDashboard() {
-  const { api, user, logout } = useAuth();
-  const navigate = useNavigate();
+  const [timetable, setTimetable] = useState(null);
 
-  // ===================================================
-  // STATE
-  // ===================================================
+  const [loading, setLoading] = useState(true);
 
-  const [faculty, setFaculty] = useState(null);
+  const [error, setError] = useState("");
 
-  const [timetable, setTimetable] = useState([]);
-
-  const [attendanceRaw, setAttendanceRaw] = useState([]);
-
-  const [attendanceSummary, setAttendanceSummary] = useState({
-    totalClasses: 0,
-    presentClasses: 0,
-    absentClasses: 0,
-    attendancePercentage: 0,
-    classWise: [],
-  });
-
-  const [currentWeek, setCurrentWeek] = useState(getStartOfWeek(new Date()));
-
-  const [period, setPeriod] = useState("week");
-
-  const [selectedDate, setSelectedDate] = useState("");
-
-  const [sortBy, setSortBy] = useState("date");
-
-  const [sortDirection, setSortDirection] = useState("asc");
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   const [filters, setFilters] = useState({
     search: "",
     className: "all",
     subject: "all",
-    status: "all",
+    branch: "all",
+    semester: "all",
+    room: "all",
+    slotType: "all",
+    sessionType: "all",
     day: "all",
   });
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [showFilters, setShowFilters] = useState(true);
 
-  // ===================================================
-  // LOAD PROFILE
-  // ===================================================
+  /* =======================================================================
+     FETCH TIMETABLE
+     ======================================================================= */
 
-  const loadProfile = useCallback(async () => {
-    const response = await api.get(API_ENDPOINTS.profile);
+  const fetchTimetable = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-    const payload = response?.data;
+    try {
+      const token = getToken();
 
-    const profile =
-      payload?.data || payload?.faculty || payload?.facultyData || payload;
+      const headers = {};
 
-    setFaculty(profile || null);
-
-    return profile;
-  }, [api]);
-
-  // ===================================================
-  // LOAD TIMETABLE
-  // ===================================================
-
-  const loadTimetable = useCallback(
-    async (facultyId) => {
-      if (!facultyId) {
-        setTimetable([]);
-        return;
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
       }
 
-      try {
-        const response = await api.get(API_ENDPOINTS.timetable(facultyId));
+      const response = await axios.get(
+        `${globalBackendRoute}/api/timetable/get-my-timetable`,
+        {
+          headers,
+          withCredentials: true,
+        },
+      );
 
-        const payload = response?.data;
+      const timetableData = getTimetableFromResponse(response);
 
-        const schedule = safeArray(payload, [
-          "data",
-          "timetable",
-          "schedule",
-          "classes",
-        ]);
-
-        setTimetable(schedule);
-      } catch (error) {
-        console.error("Faculty timetable error:", error);
-
-        setTimetable([]);
-      }
-    },
-    [api],
-  );
-
-  // ===================================================
-  // LOAD ATTENDANCE
-  // ===================================================
-
-  const loadAttendance = useCallback(
-    async (facultyId) => {
-      if (!facultyId) {
-        return;
+      if (!timetableData) {
+        throw new Error("No timetable data was returned by the server.");
       }
 
-      try {
-        const response = await api.get(API_ENDPOINTS.attendance(facultyId));
+      setTimetable(timetableData);
 
-        const payload = response?.data;
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error("FACULTY DASHBOARD TIMETABLE ERROR:", err);
 
-        const data = payload?.data || payload?.attendance || payload || {};
+      const serverMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Unable to load timetable.";
 
-        const records = safeArray(data, [
-          "records",
-          "attendance",
-          "data",
-          "classes",
-          "classWise",
-        ]);
-
-        setAttendanceRaw(records);
-
-        const classWise = safeArray(data, [
-          "classWise",
-          "classWiseAttendance",
-          "classes",
-        ]);
-
-        const totalClasses = Number(
-          data?.totalClasses ??
-            data?.totalAttendance ??
-            data?.totalRecords ??
-            records.length ??
-            0,
-        );
-
-        const presentClasses = Number(
-          data?.presentClasses ??
-            data?.attendedClasses ??
-            data?.totalPresent ??
-            data?.present ??
-            0,
-        );
-
-        const absentClasses = Number(
-          data?.absentClasses ?? data?.totalAbsent ?? data?.absent ?? 0,
-        );
-
-        let attendancePercentage = Number(
-          data?.attendancePercentage ??
-            data?.percentage ??
-            data?.attendancePercent ??
-            0,
-        );
-
-        if (!attendancePercentage && totalClasses > 0 && presentClasses >= 0) {
-          attendancePercentage = (presentClasses / totalClasses) * 100;
-        }
-
-        setAttendanceSummary({
-          totalClasses,
-          presentClasses,
-          absentClasses,
-          attendancePercentage,
-          classWise,
-        });
-      } catch (error) {
-        console.error("Faculty attendance error:", error);
-
-        setAttendanceRaw([]);
-
-        setAttendanceSummary({
-          totalClasses: 0,
-          presentClasses: 0,
-          absentClasses: 0,
-          attendancePercentage: 0,
-          classWise: [],
-        });
-      }
-    },
-    [api],
-  );
-
-  // ===================================================
-  // LOAD EVERYTHING
-  // ===================================================
-
-  const loadDashboard = useCallback(
-    async ({ silent = false } = {}) => {
-      try {
-        if (silent) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
-        }
-
-        setErrorMessage("");
-
-        let profile = faculty;
-
-        if (!profile) {
-          profile = await loadProfile();
-        }
-
-        const facultyId = getFacultyId(profile);
-
-        if (!facultyId) {
-          throw new Error(
-            "Faculty profile loaded, but faculty ID was not found.",
-          );
-        }
-
-        await Promise.all([
-          loadTimetable(facultyId),
-          loadAttendance(facultyId),
-        ]);
-      } catch (error) {
-        console.error("Faculty dashboard error:", error);
-
-        setErrorMessage(
-          error?.response?.data?.message ||
-            error?.message ||
-            "Failed to load faculty dashboard.",
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [faculty, loadAttendance, loadProfile, loadTimetable],
-  );
-
-  // ===================================================
-  // INITIAL LOAD
-  // ===================================================
-
-  useEffect(() => {
-    loadDashboard();
-
-    const intervalId = window.setInterval(() => {
-      loadDashboard({ silent: true });
-    }, 30000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
+      setError(serverMessage);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // ===================================================
-  // PROFILE
-  // ===================================================
+  useEffect(() => {
+    fetchTimetable();
+  }, [fetchTimetable]);
 
-  const userData =
-    faculty?.userId || faculty?.user || faculty?.userDetails || user || {};
+  /* =======================================================================
+     RAW DATA
+     ======================================================================= */
 
-  const facultyName =
-    faculty?.fullName ||
-    faculty?.name ||
-    userData?.fullName ||
-    userData?.name ||
-    userData?.email ||
-    "Faculty";
+  const periods = useMemo(() => {
+    if (!timetable) {
+      return [];
+    }
 
-  const employeeId = faculty?.employeeId || faculty?.employeeID || "-";
+    const source = Array.isArray(timetable.periods) ? timetable.periods : [];
 
-  const department = faculty?.department || faculty?.departmentName || "-";
+    return source
+      .map((period) => ({
+        ...period,
+        period: parsePeriodNumber(period.period),
+      }))
+      .filter((period) => period.period !== null)
+      .sort((a, b) => a.period - b.period);
+  }, [timetable]);
 
-  const designation = faculty?.designation || faculty?.position || "Faculty";
+  const entries = useMemo(() => {
+    if (!timetable || !Array.isArray(timetable.entries)) {
+      return [];
+    }
 
-  // ===================================================
-  // WEEK INFO
-  // ===================================================
+    return timetable.entries.filter(Boolean);
+  }, [timetable]);
 
-  const weekEnd = useMemo(() => getEndOfWeek(currentWeek), [currentWeek]);
+  /* =======================================================================
+     PERIOD FALLBACK
+     ======================================================================= */
 
-  const isCurrentWeek = useMemo(() => {
-    return (
-      getStartOfWeek(new Date()).getTime() ===
-      getStartOfWeek(currentWeek).getTime()
-    );
-  }, [currentWeek]);
+  const displayPeriods = useMemo(() => {
+    if (periods.length > 0) {
+      return periods;
+    }
 
-  // ===================================================
-  // WEEK NAVIGATION
-  // ===================================================
+    /*
+     * If periods somehow aren't stored but entries have period numbers,
+     * still render Period 1-10.
+     */
 
-  const goToPreviousWeek = () => {
-    setCurrentWeek((previous) => {
-      const next = new Date(previous);
-      next.setDate(next.getDate() - 7);
-      return next;
+    const periodNumbers = new Set();
+
+    entries.forEach((entry) => {
+      const number = parsePeriodNumber(entry.period);
+
+      if (number !== null) {
+        periodNumbers.add(number);
+      }
     });
-  };
 
-  const goToNextWeek = () => {
-    setCurrentWeek((previous) => {
-      const next = new Date(previous);
-      next.setDate(next.getDate() + 7);
-      return next;
-    });
-  };
+    if (periodNumbers.size > 0) {
+      return Array.from(periodNumbers)
+        .sort((a, b) => a - b)
+        .map((period) => ({
+          period,
+          startTime: "",
+          endTime: "",
+        }));
+    }
 
-  const goToCurrentWeek = () => {
-    setCurrentWeek(getStartOfWeek(new Date()));
-    setPeriod("week");
-    setSelectedDate("");
-  };
+    return Array.from({ length: 10 }, (_, index) => ({
+      period: index + 1,
+      startTime: "",
+      endTime: "",
+    }));
+  }, [periods, entries]);
 
-  // ===================================================
-  // FILTER OPTIONS
-  // ===================================================
+  /* =======================================================================
+     OPTIONS
+     ======================================================================= */
 
   const classOptions = useMemo(() => {
     return Array.from(
-      new Set(
-        timetable
-          .map(getClassName)
-          .filter((value) => value && value !== "Class"),
-      ),
-    ).sort();
-  }, [timetable]);
+      new Set(entries.map((item) => normalize(item.className)).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [entries]);
 
   const subjectOptions = useMemo(() => {
     return Array.from(
       new Set(
-        timetable
-          .map(getSubject)
-          .filter((value) => value && value !== "Subject"),
+        entries
+          .map(
+            (item) =>
+              normalize(item.subjectName) || normalize(item.subjectCode),
+          )
+          .filter(Boolean),
       ),
-    ).sort();
-  }, [timetable]);
+    ).sort((a, b) => a.localeCompare(b));
+  }, [entries]);
 
-  // ===================================================
-  // PERIOD FILTER
-  // ===================================================
+  const branchOptions = useMemo(() => {
+    return Array.from(
+      new Set(entries.map((item) => normalize(item.branch)).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [entries]);
 
-  const periodFilteredTimetable = useMemo(() => {
-    const now = new Date();
+  const semesterOptions = useMemo(() => {
+    return Array.from(
+      new Set(entries.map((item) => normalize(item.semester)).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [entries]);
 
-    if (period === "all") {
-      return [...timetable];
-    }
+  const roomOptions = useMemo(() => {
+    return Array.from(
+      new Set(entries.map((item) => normalize(item.roomNo)).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [entries]);
 
-    if (period === "date") {
-      if (!selectedDate) {
-        return [...timetable];
+  /* =======================================================================
+     FILTER ENTRIES
+     ======================================================================= */
+
+  const filteredEntries = useMemo(() => {
+    const search = normalizeLower(filters.search);
+
+    return entries.filter((entry) => {
+      const entryClass = normalize(entry.className);
+
+      const entrySubject =
+        normalize(entry.subjectName) || normalize(entry.subjectCode);
+
+      const searchableText = [
+        entry.subjectCode,
+        entry.subjectName,
+        entry.className,
+        entry.program,
+        entry.branch,
+        entry.semester,
+        entry.section,
+        entry.roomNo,
+        entry.sessionType,
+        entry.slotType,
+        entry.remarks,
+        entry.day,
+      ]
+        .map(normalizeLower)
+        .join(" ");
+
+      if (search && !searchableText.includes(search)) {
+        return false;
       }
 
-      const target = new Date(`${selectedDate}T00:00:00`);
-
-      return timetable.filter((item) => {
-        const date = getScheduleDateObject(item);
-
-        if (!date) return false;
-
-        return (
-          date.getFullYear() === target.getFullYear() &&
-          date.getMonth() === target.getMonth() &&
-          date.getDate() === target.getDate()
-        );
-      });
-    }
-
-    if (period === "week") {
-      const start = getStartOfWeek(currentWeek);
-      const end = getEndOfWeek(currentWeek);
-
-      return timetable.filter((item) => {
-        const date = getScheduleDateObject(item);
-
-        if (!date) return false;
-
-        return date >= start && date <= end;
-      });
-    }
-
-    if (period === "month") {
-      return timetable.filter((item) => {
-        const date = getScheduleDateObject(item);
-
-        if (!date) return false;
-
-        return (
-          date.getFullYear() === now.getFullYear() &&
-          date.getMonth() === now.getMonth()
-        );
-      });
-    }
-
-    if (period === "year") {
-      return timetable.filter((item) => {
-        const date = getScheduleDateObject(item);
-
-        if (!date) return false;
-
-        return date.getFullYear() === now.getFullYear();
-      });
-    }
-
-    return [...timetable];
-  }, [timetable, period, selectedDate, currentWeek]);
-
-  // ===================================================
-  // FILTER + SORT
-  // ===================================================
-
-  const filteredTimetable = useMemo(() => {
-    let result = [...periodFilteredTimetable];
-
-    const search = filters.search.trim().toLowerCase();
-
-    if (search) {
-      result = result.filter((item) => {
-        const searchable = [
-          getSubject(item),
-          getClassName(item),
-          getRoom(item),
-          getTopic(item),
-          getReason(item),
-          item?.facultyName,
-          item?.subjectCode,
-          item?.courseCode,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        return searchable.includes(search);
-      });
-    }
-
-    if (filters.className !== "all") {
-      result = result.filter(
-        (item) => getClassName(item) === filters.className,
-      );
-    }
-
-    if (filters.subject !== "all") {
-      result = result.filter((item) => getSubject(item) === filters.subject);
-    }
-
-    if (filters.status !== "all") {
-      result = result.filter(
-        (item) => getScheduleStatus(item) === filters.status,
-      );
-    }
-
-    if (filters.day !== "all") {
-      result = result.filter((item) => {
-        const date = getScheduleDateObject(item);
-
-        if (!date) return false;
-
-        return (
-          date.toLocaleDateString(undefined, {
-            weekday: "long",
-          }) === filters.day
-        );
-      });
-    }
-
-    result.sort((a, b) => {
-      let comparison = 0;
-
-      if (sortBy === "date") {
-        comparison =
-          (getScheduleDateObject(a)?.getTime() || 0) -
-          (getScheduleDateObject(b)?.getTime() || 0);
+      if (filters.className !== "all" && entryClass !== filters.className) {
+        return false;
       }
 
-      if (sortBy === "subject") {
-        comparison = getSubject(a).localeCompare(getSubject(b));
+      if (filters.subject !== "all" && entrySubject !== filters.subject) {
+        return false;
       }
 
-      if (sortBy === "class") {
-        comparison = getClassName(a).localeCompare(getClassName(b));
+      if (
+        filters.branch !== "all" &&
+        normalize(entry.branch) !== filters.branch
+      ) {
+        return false;
       }
 
-      if (sortBy === "status") {
-        comparison = getScheduleStatus(a).localeCompare(getScheduleStatus(b));
+      if (
+        filters.semester !== "all" &&
+        normalize(entry.semester) !== filters.semester
+      ) {
+        return false;
       }
 
-      if (sortBy === "room") {
-        comparison = getRoom(a).localeCompare(getRoom(b));
+      if (filters.room !== "all" && normalize(entry.roomNo) !== filters.room) {
+        return false;
       }
 
-      return sortDirection === "asc" ? comparison : -comparison;
+      if (
+        filters.slotType !== "all" &&
+        normalize(entry.slotType) !== filters.slotType
+      ) {
+        return false;
+      }
+
+      if (
+        filters.sessionType !== "all" &&
+        normalize(entry.sessionType) !== filters.sessionType
+      ) {
+        return false;
+      }
+
+      if (filters.day !== "all" && normalize(entry.day) !== filters.day) {
+        return false;
+      }
+
+      return true;
     });
+  }, [entries, filters]);
 
-    return result;
-  }, [periodFilteredTimetable, filters, sortBy, sortDirection]);
+  /* =======================================================================
+     GRID
+     ======================================================================= */
 
-  // ===================================================
-  // GROUP BY DATE
-  // ===================================================
+  const entryMap = useMemo(() => {
+    const map = new Map();
 
-  const groupedTimetable = useMemo(() => {
-    const groups = {};
+    filteredEntries.forEach((entry) => {
+      const day = normalize(entry.day);
 
-    filteredTimetable.forEach((item) => {
-      const date = getScheduleDateObject(item);
+      const period = parsePeriodNumber(entry.period);
 
-      if (!date) {
-        const key = "unknown";
-
-        if (!groups[key]) {
-          groups[key] = [];
-        }
-
-        groups[key].push(item);
-
+      if (!day || period === null) {
         return;
       }
 
-      const key = [
-        date.getFullYear(),
-        String(date.getMonth() + 1).padStart(2, "0"),
-        String(date.getDate()).padStart(2, "0"),
-      ].join("-");
-
-      if (!groups[key]) {
-        groups[key] = [];
-      }
-
-      groups[key].push(item);
+      map.set(`${day}-${period}`, entry);
     });
 
-    return groups;
-  }, [filteredTimetable]);
+    return map;
+  }, [filteredEntries]);
 
-  // ===================================================
-  // TIMETABLE ANALYTICS
-  // ===================================================
+  /* =======================================================================
+     ANALYTICS
+     ======================================================================= */
 
-  const timetableAnalytics = useMemo(() => {
-    const source = periodFilteredTimetable;
+  const analytics = useMemo(() => {
+    const subjectEntries = filteredEntries.filter((entry) => {
+      const slotType = normalizeLower(entry.slotType);
 
-    const result = {
-      total: source.length,
-      scheduled: 0,
-      completed: 0,
-      cancelled: 0,
-      notTaken: 0,
-      rescheduled: 0,
-      unknown: 0,
-    };
-
-    source.forEach((item) => {
-      const status = getScheduleStatus(item);
-
-      if (status === "scheduled") result.scheduled += 1;
-      else if (status === "completed") result.completed += 1;
-      else if (status === "cancelled") result.cancelled += 1;
-      else if (status === "not_taken") result.notTaken += 1;
-      else if (status === "rescheduled") result.rescheduled += 1;
-      else result.unknown += 1;
+      return (
+        slotType !== "break" &&
+        slotType !== "short-break" &&
+        slotType !== "lunch" &&
+        slotType !== "free"
+      );
     });
 
-    return result;
-  }, [periodFilteredTimetable]);
+    const theory = subjectEntries.filter(
+      (entry) => normalizeLower(entry.sessionType) === "theory",
+    ).length;
 
-  // ===================================================
-  // ATTENDANCE ANALYTICS
-  // ===================================================
+    const labs = subjectEntries.filter(
+      (entry) => normalizeLower(entry.sessionType) === "lab",
+    ).length;
 
-  const attendanceAnalytics = useMemo(() => {
-    let total = Number(attendanceSummary.totalClasses || 0);
+    const activities = subjectEntries.filter(
+      (entry) => normalizeLower(entry.sessionType) === "activity",
+    ).length;
 
-    let present = Number(attendanceSummary.presentClasses || 0);
+    const uniqueSubjects = new Set(
+      subjectEntries
+        .map(
+          (entry) =>
+            normalize(entry.subjectCode) || normalize(entry.subjectName),
+        )
+        .filter(Boolean),
+    );
 
-    let absent = Number(attendanceSummary.absentClasses || 0);
+    const uniqueClasses = new Set(
+      subjectEntries.map((entry) => normalize(entry.className)).filter(Boolean),
+    );
 
-    if (!total && attendanceRaw.length) {
-      total = attendanceRaw.length;
-    }
+    const uniqueRooms = new Set(
+      subjectEntries.map((entry) => normalize(entry.roomNo)).filter(Boolean),
+    );
 
-    if (!present && attendanceRaw.length) {
-      present = attendanceRaw.filter((item) => {
-        const status = String(
-          item?.status || item?.attendanceStatus || item?.state || "",
-        ).toLowerCase();
+    const uniqueDays = new Set(
+      subjectEntries.map((entry) => normalize(entry.day)).filter(Boolean),
+    );
 
-        return status === "present" || status === "p" || item?.present === true;
-      }).length;
-    }
+    const totalGridSlots = DAYS.length * displayPeriods.length;
 
-    if (!absent && attendanceRaw.length) {
-      absent = attendanceRaw.filter((item) => {
-        const status = String(
-          item?.status || item?.attendanceStatus || item?.state || "",
-        ).toLowerCase();
+    const occupiedSlots = filteredEntries.filter((entry) => {
+      const slotType = normalizeLower(entry.slotType);
 
-        return status === "absent" || status === "a" || item?.present === false;
-      }).length;
-    }
+      return (
+        slotType !== "break" &&
+        slotType !== "short-break" &&
+        slotType !== "lunch" &&
+        slotType !== "free"
+      );
+    }).length;
 
-    let percentage = Number(attendanceSummary.attendancePercentage || 0);
-
-    if (!percentage && total > 0) {
-      percentage = (present / total) * 100;
-    }
-
-    return {
-      total,
-      present,
-      absent,
-      percentage,
-    };
-  }, [attendanceRaw, attendanceSummary]);
-
-  // ===================================================
-  // OVERALL ANALYTICS
-  // ===================================================
-
-  const overallAnalytics = useMemo(() => {
-    const total = timetableAnalytics.total;
-
-    const actionable =
-      timetableAnalytics.completed +
-      timetableAnalytics.notTaken +
-      timetableAnalytics.cancelled +
-      timetableAnalytics.rescheduled;
-
-    const completionPercentage =
-      total > 0 ? (timetableAnalytics.completed / total) * 100 : 0;
-
-    const cancellationPercentage =
-      total > 0 ? (timetableAnalytics.cancelled / total) * 100 : 0;
-
-    const reschedulePercentage =
-      total > 0 ? (timetableAnalytics.rescheduled / total) * 100 : 0;
+    const occupancyPercentage =
+      totalGridSlots > 0 ? (occupiedSlots / totalGridSlots) * 100 : 0;
 
     return {
-      total,
-      actionable,
-      completionPercentage,
-      cancellationPercentage,
-      reschedulePercentage,
+      totalEntries: filteredEntries.length,
+      subjectEntries: subjectEntries.length,
+      theory,
+      labs,
+      activities,
+      subjects: uniqueSubjects.size,
+      classes: uniqueClasses.size,
+      rooms: uniqueRooms.size,
+      days: uniqueDays.size,
+      totalGridSlots,
+      occupiedSlots,
+      freeSlots: Math.max(totalGridSlots - occupiedSlots, 0),
+      occupancyPercentage,
     };
-  }, [timetableAnalytics]);
+  }, [filteredEntries, displayPeriods]);
 
-  // ===================================================
-  // CLEAR FILTERS
-  // ===================================================
+  /* =======================================================================
+     FILTER ACTIONS
+     ======================================================================= */
 
   const clearFilters = () => {
     setFilters({
       search: "",
       className: "all",
       subject: "all",
-      status: "all",
+      branch: "all",
+      semester: "all",
+      room: "all",
+      slotType: "all",
+      sessionType: "all",
       day: "all",
     });
-
-    setSortBy("date");
-    setSortDirection("asc");
   };
 
-  // ===================================================
-  // EXPORT CSV / EXCEL
-  // ===================================================
+  const hasActiveFilters = useMemo(() => {
+    return Object.values(filters).some(
+      (value) => value !== "" && value !== "all",
+    );
+  }, [filters]);
+
+  /* =======================================================================
+     PRINT / PDF
+     ======================================================================= */
+
+  const printTimetable = () => {
+    window.print();
+  };
+
+  /* =======================================================================
+     EXCEL EXPORT
+     ======================================================================= */
 
   const exportExcel = () => {
     const headers = [
-      "Date",
       "Day",
+      "Period",
       "Start Time",
       "End Time",
-      "Subject",
+      "Subject Code",
+      "Subject Name",
       "Class",
-      "Room",
-      "Topic",
-      "Status",
-      "Reason",
+      "Program",
+      "Branch",
+      "Semester",
+      "Section",
+      "Room No",
+      "Session Type",
+      "Slot Type",
+      "Remarks",
     ];
 
-    const rows = filteredTimetable.map((item) => [
-      formatDate(getScheduleDate(item)),
-      formatDay(getScheduleDate(item)),
-      formatTime(getStartTime(item)),
-      formatTime(getEndTime(item)),
-      getSubject(item),
-      getClassName(item),
-      getRoom(item),
-      getTopic(item),
-      getScheduleStatus(item),
-      getReason(item),
-    ]);
+    const rows = [];
 
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row
-          .map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`)
-          .join(","),
-      )
-      .join("\n");
+    DAYS.forEach((day) => {
+      displayPeriods.forEach((period) => {
+        const entry = entryMap.get(`${day}-${period.period}`);
 
-    downloadBlob(
-      csv,
-      `faculty-timetable-${new Date().toISOString().slice(0, 10)}.csv`,
-      "text/csv;charset=utf-8;",
-    );
+        rows.push([
+          day,
+          period.period,
+          entry?.startTime || period.startTime || "",
+          entry?.endTime || period.endTime || "",
+          entry?.subjectCode || "",
+          entry?.subjectName || "",
+          entry?.className || "",
+          entry?.program || "",
+          entry?.branch || "",
+          entry?.semester || "",
+          entry?.section || "",
+          entry?.roomNo || "",
+          entry?.sessionType || "",
+          entry?.slotType || "",
+          entry?.remarks || "",
+        ]);
+      });
+    });
+
+    const csv = [
+      headers.map(escapeCsv).join(","),
+      ...rows.map((row) => row.map(escapeCsv).join(",")),
+    ].join("\r\n");
+
+    const fileName = `${getFileSafeName(
+      timetable?.timetableTitle || "Faculty_Timetable",
+    )}.csv`;
+
+    downloadBlob(csv, fileName, "text/csv;charset=utf-8;");
   };
 
-  // ===================================================
-  // EXPORT WORD
-  // ===================================================
+  /* =======================================================================
+     WORD EXPORT
+     ======================================================================= */
 
   const exportWord = () => {
-    const rows = filteredTimetable
+    const title = normalize(timetable?.timetableTitle) || "Faculty Timetable";
+
+    const institution = normalize(timetable?.institutionName) || "";
+
+    const academicYear = normalize(timetable?.academicYear) || "";
+
+    const facultyName = normalize(timetable?.facultyName) || "";
+
+    const rows = DAYS.map((day) => {
+      const cells = displayPeriods
+        .map((period) => {
+          const entry = entryMap.get(`${day}-${period.period}`);
+
+          if (!entry) {
+            return `
+              <td style="height:90px;text-align:center;color:#999;">
+                Free
+              </td>
+            `;
+          }
+
+          const subject =
+            normalize(entry.subjectCode) ||
+            normalize(entry.subjectName) ||
+            "Free";
+
+          const subjectName =
+            entry.subjectCode && entry.subjectName
+              ? `<div>${escapeHtml(entry.subjectName)}</div>`
+              : "";
+
+          return `
+            <td style="vertical-align:top;height:90px;">
+              <strong>${escapeHtml(subject)}</strong>
+              ${subjectName}
+              ${
+                entry.className
+                  ? `<div>Class: ${escapeHtml(entry.className)}</div>`
+                  : ""
+              }
+              ${
+                entry.section
+                  ? `<div>Section: ${escapeHtml(entry.section)}</div>`
+                  : ""
+              }
+              ${
+                entry.roomNo
+                  ? `<div>Room: ${escapeHtml(entry.roomNo)}</div>`
+                  : ""
+              }
+              ${
+                entry.sessionType
+                  ? `<div>${escapeHtml(
+                      formatSessionType(entry.sessionType),
+                    )}</div>`
+                  : ""
+              }
+            </td>
+          `;
+        })
+        .join("");
+
+      return `
+        <tr>
+          <th>${escapeHtml(day)}</th>
+          ${cells}
+        </tr>
+      `;
+    }).join("");
+
+    const periodHeaders = displayPeriods
       .map(
-        (item) => `
-          <tr>
-            <td>${escapeHtml(formatDate(getScheduleDate(item)))}</td>
-            <td>${escapeHtml(formatDay(getScheduleDate(item)))}</td>
-            <td>${escapeHtml(formatTime(getStartTime(item)))}</td>
-            <td>${escapeHtml(formatTime(getEndTime(item)))}</td>
-            <td>${escapeHtml(getSubject(item))}</td>
-            <td>${escapeHtml(getClassName(item))}</td>
-            <td>${escapeHtml(getRoom(item))}</td>
-            <td>${escapeHtml(getTopic(item))}</td>
-            <td>${escapeHtml(getScheduleStatus(item))}</td>
-          </tr>
+        (period) => `
+          <th>
+            P${period.period}
+            <br/>
+            <span style="font-weight:normal;font-size:10px;">
+              ${escapeHtml(formatTime(period.startTime))}
+              -
+              ${escapeHtml(formatTime(period.endTime))}
+            </span>
+          </th>
         `,
       )
       .join("");
 
     const html = `
+      <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="UTF-8" />
-          <title>Faculty Timetable</title>
-          <style>
+      <head>
+        <meta charset="utf-8" />
+
+        <title>${escapeHtml(title)}</title>
+
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            padding: 25px;
+            color: #111827;
+          }
+
+          h1 {
+            text-align: center;
+            margin-bottom: 5px;
+          }
+
+          .meta {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #4b5563;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+          }
+
+          th, td {
+            border: 1px solid #d1d5db;
+            padding: 7px;
+            font-size: 10px;
+          }
+
+          th {
+            background: #f3f4f6;
+            text-align: center;
+          }
+
+          td {
+            vertical-align: top;
+          }
+
+          .footer {
+            margin-top: 20px;
+            font-size: 10px;
+            color: #6b7280;
+          }
+
+          @media print {
             body {
-              font-family: Arial, sans-serif;
-              padding: 30px;
+              padding: 10px;
             }
+          }
+        </style>
+      </head>
 
-            h1 {
-              text-align: center;
-            }
+      <body>
 
-            .faculty {
-              margin-bottom: 20px;
-            }
+        <h1>${escapeHtml(title)}</h1>
 
-            table {
-              width: 100%;
-              border-collapse: collapse;
-            }
+        <div class="meta">
+          ${institution ? `<div>${escapeHtml(institution)}</div>` : ""}
 
-            th,
-            td {
-              border: 1px solid #999;
-              padding: 8px;
-              text-align: left;
-            }
+          ${facultyName ? `<div>Faculty: ${escapeHtml(facultyName)}</div>` : ""}
 
-            th {
-              background: #f2f2f2;
-            }
-          </style>
-        </head>
+          ${
+            academicYear
+              ? `<div>Academic Year: ${escapeHtml(academicYear)}</div>`
+              : ""
+          }
+        </div>
 
-        <body>
-          <h1>Faculty Timetable</h1>
+        <table>
+          <thead>
+            <tr>
+              <th>Day</th>
+              ${periodHeaders}
+            </tr>
+          </thead>
 
-          <div class="faculty">
-            <strong>Faculty:</strong>
-            ${escapeHtml(facultyName)}
-            <br />
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
 
-            <strong>Employee ID:</strong>
-            ${escapeHtml(employeeId)}
-            <br />
+        <div class="footer">
+          Generated from Faculty Dashboard.
+        </div>
 
-            <strong>Department:</strong>
-            ${escapeHtml(department)}
-            <br />
-
-            <strong>Generated:</strong>
-            ${escapeHtml(formatDate(new Date()))}
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Day</th>
-                <th>Start</th>
-                <th>End</th>
-                <th>Subject</th>
-                <th>Class</th>
-                <th>Room</th>
-                <th>Topic</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              ${rows}
-            </tbody>
-          </table>
-        </body>
+      </body>
       </html>
     `;
 
-    downloadBlob(
-      html,
-      `faculty-timetable-${new Date().toISOString().slice(0, 10)}.doc`,
-      "application/msword",
-    );
+    downloadBlob(html, `${getFileSafeName(title)}.doc`, "application/msword");
   };
 
-  // ===================================================
-  // PRINT / PDF
-  // ===================================================
+  /* =======================================================================
+     CURRENT TIMETABLE INFO
+     ======================================================================= */
 
-  const printTimetable = () => {
-    const rows = filteredTimetable
-      .map(
-        (item) => `
-          <tr>
-            <td>${escapeHtml(formatDate(getScheduleDate(item)))}</td>
-            <td>${escapeHtml(formatDay(getScheduleDate(item)))}</td>
-            <td>${escapeHtml(formatTime(getStartTime(item)))}</td>
-            <td>${escapeHtml(formatTime(getEndTime(item)))}</td>
-            <td>${escapeHtml(getSubject(item))}</td>
-            <td>${escapeHtml(getClassName(item))}</td>
-            <td>${escapeHtml(getRoom(item))}</td>
-            <td>${escapeHtml(getTopic(item))}</td>
-            <td>${escapeHtml(getScheduleStatus(item))}</td>
-          </tr>
-        `,
-      )
-      .join("");
+  const timetableTitle =
+    normalize(timetable?.timetableTitle) || "Faculty Timetable";
 
-    const printWindow = window.open("", "_blank", "width=1200,height=800");
+  const institutionName = normalize(timetable?.institutionName) || "College";
 
-    if (!printWindow) {
-      return;
-    }
+  const academicYear = normalize(timetable?.academicYear) || "Academic Year";
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Faculty Timetable</title>
+  const facultyName =
+    normalize(timetable?.facultyName) ||
+    normalize(getStoredUser()?.name) ||
+    normalize(getStoredUser()?.fullName) ||
+    "Faculty";
 
-          <style>
-            * {
-              box-sizing: border-box;
-            }
-
-            body {
-              font-family: Arial, sans-serif;
-              padding: 30px;
-              color: #111827;
-            }
-
-            h1 {
-              margin-bottom: 5px;
-              text-align: center;
-            }
-
-            .subtitle {
-              text-align: center;
-              color: #6b7280;
-              margin-bottom: 25px;
-            }
-
-            .information {
-              margin-bottom: 25px;
-              line-height: 1.7;
-            }
-
-            table {
-              width: 100%;
-              border-collapse: collapse;
-            }
-
-            th,
-            td {
-              border: 1px solid #d1d5db;
-              padding: 8px;
-              font-size: 12px;
-              text-align: left;
-            }
-
-            th {
-              background: #f3f4f6;
-            }
-
-            @media print {
-              body {
-                padding: 10px;
-              }
-            }
-          </style>
-        </head>
-
-        <body>
-          <h1>Faculty Timetable</h1>
-
-          <div class="subtitle">
-            ${escapeHtml(formatDate(new Date()))}
-          </div>
-
-          <div class="information">
-            <strong>Faculty:</strong>
-            ${escapeHtml(facultyName)}
-            <br />
-
-            <strong>Employee ID:</strong>
-            ${escapeHtml(employeeId)}
-            <br />
-
-            <strong>Department:</strong>
-            ${escapeHtml(department)}
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Day</th>
-                <th>Start</th>
-                <th>End</th>
-                <th>Subject</th>
-                <th>Class</th>
-                <th>Room</th>
-                <th>Topic</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              ${rows}
-            </tbody>
-          </table>
-        </body>
-      </html>
-    `);
-
-    printWindow.document.close();
-
-    printWindow.focus();
-
-    setTimeout(() => {
-      printWindow.print();
-    }, 300);
-  };
-
-  // ===================================================
-  // TOGGLE SORT
-  // ===================================================
-
-  const changeSort = (value) => {
-    if (sortBy === value) {
-      setSortDirection((previous) => (previous === "asc" ? "desc" : "asc"));
-    } else {
-      setSortBy(value);
-      setSortDirection("asc");
-    }
-  };
-
-  // ===================================================
-  // LOADING
-  // ===================================================
+  /* =======================================================================
+     LOADING
+     ======================================================================= */
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-white via-slate-50 to-white px-6 py-10">
-        <div className="mx-auto max-w-7xl rounded-2xl bg-white p-8 shadow-sm ring-1 ring-gray-900/10">
-          <div className="flex items-center gap-3 text-sm text-gray-500">
-            <RefreshCw size={18} className="animate-spin text-indigo-600" />
-            Loading faculty dashboard...
+      <div className="min-h-screen bg-gray-50">
+        <div className="mx-auto max-w-[1800px] px-4 py-8 sm:px-6 lg:px-8">
+          <div className="animate-pulse">
+            <div className="h-10 w-72 rounded-lg bg-gray-200" />
+
+            <div className="mt-3 h-5 w-96 rounded bg-gray-200" />
+
+            <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="h-28 rounded-2xl bg-gray-200" />
+              ))}
+            </div>
+
+            <div className="mt-8 h-[600px] rounded-2xl bg-gray-200" />
           </div>
         </div>
       </div>
     );
   }
 
-  // ===================================================
-  // RENDER
-  // ===================================================
+  /* =======================================================================
+     ERROR
+     ======================================================================= */
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="mx-auto max-w-3xl px-4 py-20 sm:px-6">
+          <div className="rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-900/10">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+              <AlertCircle size={28} />
+            </div>
+
+            <h1 className="mt-5 text-xl font-bold text-gray-900">
+              Unable to load timetable
+            </h1>
+
+            <p className="mx-auto mt-2 max-w-xl text-sm text-gray-500">
+              {error}
+            </p>
+
+            <div className="mt-3 rounded-xl bg-gray-50 p-3 text-xs text-gray-500">
+              API:
+              <span className="ml-1 font-mono text-gray-700">
+                /api/timetable/get-my-timetable
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={fetchTimetable}
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700"
+            >
+              <RefreshCw size={16} />
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* =======================================================================
+     MAIN UI
+     ======================================================================= */
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-slate-50 to-white px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl">
-        {/* =================================================
+    <div className="min-h-screen bg-gray-50 print:bg-white">
+      <div className="mx-auto max-w-[1900px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        {/* ===============================================================
             HEADER
-        ================================================= */}
+        ================================================================ */}
 
-        <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700">
-              <GraduationCap size={27} />
+        <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between print:mb-5">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-sm">
+                <CalendarDays size={23} />
+              </div>
+
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+                  {timetableTitle}
+                </h1>
+
+                <p className="mt-1 text-sm text-gray-500">{institutionName}</p>
+              </div>
             </div>
 
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-gray-900">
-                Faculty Dashboard
-              </h1>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Badge type="indigo">Academic Year: {academicYear}</Badge>
 
-              <p className="mt-1 text-sm text-gray-500">
-                Welcome, {facultyName}
-              </p>
+              <Badge type="emerald">Faculty: {facultyName}</Badge>
+
+              <Badge type="sky">{entries.length} timetable entries</Badge>
+
+              {timetable?.status ? (
+                <Badge type="purple">
+                  Status: {formatSlotType(timetable.status)}
+                </Badge>
+              ) : null}
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 print:hidden">
             <button
               type="button"
-              onClick={() => loadDashboard({ silent: true })}
-              disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-60"
+              onClick={fetchTimetable}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
             >
-              <RefreshCw
-                size={15}
-                className={refreshing ? "animate-spin" : ""}
-              />
-
-              {refreshing ? "Refreshing..." : "Refresh"}
+              <RefreshCw size={16} />
+              Refresh
             </button>
 
             <button
               type="button"
-              onClick={logout}
-              className="rounded-full border border-red-200 bg-white px-5 py-2.5 text-sm font-semibold text-red-600 shadow-sm transition hover:bg-red-50"
+              onClick={printTimetable}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
             >
-              Logout
+              <FileText size={16} />
+              PDF / Print
+            </button>
+
+            <button
+              type="button"
+              onClick={exportWord}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
+            >
+              <FileText size={16} />
+              Word
+            </button>
+
+            <button
+              type="button"
+              onClick={exportExcel}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+            >
+              <FileSpreadsheet size={16} />
+              Excel
             </button>
           </div>
         </div>
 
-        {/* =================================================
-            ERROR
-        ================================================= */}
+        {/* ===============================================================
+            ANALYTICS
+        ================================================================ */}
 
-        {errorMessage ? (
-          <div className="mb-6 flex items-start gap-3 rounded-2xl bg-red-50 px-5 py-4 text-sm text-red-700 ring-1 ring-red-200">
-            <AlertCircle size={19} className="mt-0.5 shrink-0" />
-
-            <div>
-              <div className="font-semibold">
-                Dashboard data could not be fully loaded.
-              </div>
-
-              <div className="mt-1">{errorMessage}</div>
-            </div>
-          </div>
-        ) : null}
-
-        {/* =================================================
-            FACULTY INFORMATION
-        ================================================= */}
-
-        <div className="mb-8 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                Faculty
-              </div>
-
-              <div className="mt-1 font-semibold text-gray-900">
-                {facultyName}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                Employee ID
-              </div>
-
-              <div className="mt-1 font-semibold text-gray-900">
-                {employeeId}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                Department
-              </div>
-
-              <div className="mt-1 font-semibold text-gray-900">
-                {department}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                Designation
-              </div>
-
-              <div className="mt-1 font-semibold text-gray-900">
-                {designation}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* =================================================
-            QUICK ACTIONS
-        ================================================= */}
-
-        <div className="mb-10">
+        <section className="mb-8">
           <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Faculty Operations
+            <h2 className="text-lg font-bold text-gray-900">
+              Timetable Analytics
             </h2>
 
             <p className="mt-1 text-sm text-gray-500">
-              Quickly access the areas you operate most frequently.
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <QuickAction
-              icon={CalendarDays}
-              title="Manage Timetable"
-              description="View and update your timetable."
-              onClick={() => navigate(NAVIGATION.timetable)}
-            />
-
-            <QuickAction
-              icon={CheckCircle2}
-              title="Mark Class Status"
-              description="Completed, not taken, cancelled or rescheduled."
-              onClick={() => navigate(NAVIGATION.classTracking)}
-            />
-
-            <QuickAction
-              icon={ClipboardCheck}
-              title="Mark Attendance"
-              description="Open student attendance for your classes."
-              onClick={() => navigate(NAVIGATION.attendance)}
-            />
-
-            <QuickAction
-              icon={Edit3}
-              title="Update Profile"
-              description="Update your faculty information."
-              onClick={() => navigate(NAVIGATION.profile)}
-            />
-          </div>
-        </div>
-
-        {/* =================================================
-            WEEK SELECTOR
-        ================================================= */}
-
-        <div className="mb-8 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                Current Teaching Week
-              </div>
-
-              <div className="mt-1 text-xl font-semibold text-gray-900">
-                {formatDate(currentWeek)}
-                {" — "}
-                {formatDate(weekEnd)}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={goToPreviousWeek}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-100"
-                title="Previous week"
-              >
-                <ChevronLeft size={18} />
-              </button>
-
-              <button
-                type="button"
-                onClick={goToCurrentWeek}
-                className={`rounded-full px-5 py-2.5 text-sm font-semibold transition ${
-                  isCurrentWeek
-                    ? "bg-indigo-600 text-white"
-                    : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                This Week
-              </button>
-
-              <button
-                type="button"
-                onClick={goToNextWeek}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-100"
-                title="Next week"
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* =================================================
-            OVERALL CLASS ANALYTICS
-        ================================================= */}
-
-        <div className="mb-10">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Overall Class Status
-            </h2>
-
-            <p className="mt-1 text-sm text-gray-500">
-              Status of the timetable records currently available.
+              Overview of the timetable currently displayed.
             </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <StatCard
-              title="Total Classes"
-              value={timetableAnalytics.total}
-              subtitle="Scheduled records"
-              accent="indigo"
+              title="Total Entries"
+              value={analytics.totalEntries}
+              subtitle="Filtered timetable records"
+              icon={Calendar}
+            />
+
+            <StatCard
+              title="Classes"
+              value={analytics.classes}
+              subtitle="Unique classes"
+              icon={Users}
+            />
+
+            <StatCard
+              title="Subjects"
+              value={analytics.subjects}
+              subtitle="Unique subjects"
               icon={BookOpen}
             />
 
             <StatCard
-              title="Completed"
-              value={timetableAnalytics.completed}
-              subtitle={`${overallAnalytics.completionPercentage.toFixed(
-                1,
-              )}% completed`}
-              accent="emerald"
+              title="Theory"
+              value={analytics.theory}
+              subtitle="Theory periods"
+              icon={GraduationCap}
+            />
+
+            <StatCard
+              title="Labs"
+              value={analytics.labs}
+              subtitle="Lab periods"
+              icon={Layers}
+            />
+
+            <StatCard
+              title="Occupied"
+              value={`${analytics.occupancyPercentage.toFixed(1)}%`}
+              subtitle={`${analytics.occupiedSlots} occupied slots`}
               icon={CheckCircle2}
             />
-
-            <StatCard
-              title="Not Taken"
-              value={timetableAnalytics.notTaken}
-              subtitle="Requires attention"
-              accent="amber"
-              icon={AlertTriangle}
-            />
-
-            <StatCard
-              title="Cancelled"
-              value={timetableAnalytics.cancelled}
-              subtitle={`${overallAnalytics.cancellationPercentage.toFixed(
-                1,
-              )}% cancelled`}
-              accent="rose"
-              icon={XCircle}
-            />
-
-            <StatCard
-              title="Rescheduled"
-              value={timetableAnalytics.rescheduled}
-              subtitle={`${overallAnalytics.reschedulePercentage.toFixed(
-                1,
-              )}% rescheduled`}
-              accent="purple"
-              icon={RotateCcw}
-            />
-
-            <StatCard
-              title="Scheduled"
-              value={timetableAnalytics.scheduled}
-              subtitle="Upcoming / pending"
-              accent="sky"
-              icon={CalendarCheck}
-            />
           </div>
-        </div>
+        </section>
 
-        {/* =================================================
-            ATTENDANCE ANALYTICS
-        ================================================= */}
+        {/* ===============================================================
+            FILTERS
+        ================================================================ */}
 
-        <div className="mb-10">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Attendance Analytics
-            </h2>
-
-            <p className="mt-1 text-sm text-gray-500">
-              Attendance information returned by the existing faculty attendance
-              endpoint.
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              title="Attendance Classes"
-              value={attendanceAnalytics.total}
-              subtitle="Total attendance records"
-              accent="indigo"
-              icon={ClipboardCheck}
-            />
-
-            <StatCard
-              title="Present"
-              value={attendanceAnalytics.present}
-              subtitle="Present records"
-              accent="emerald"
-              icon={CheckCircle2}
-            />
-
-            <StatCard
-              title="Absent"
-              value={attendanceAnalytics.absent}
-              subtitle="Absent records"
-              accent="rose"
-              icon={XCircle}
-            />
-
-            <StatCard
-              title="Attendance"
-              value={`${attendanceAnalytics.percentage.toFixed(1)}%`}
-              subtitle="Overall percentage"
-              accent="purple"
-              icon={Users}
-            />
-          </div>
-
-          <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold text-gray-900">
-                  Overall Attendance
-                </div>
-
-                <div className="mt-1 text-xs text-gray-500">
-                  Present vs total attendance records
-                </div>
-              </div>
-
-              <div className="text-2xl font-bold text-gray-900">
-                {attendanceAnalytics.percentage.toFixed(1)}%
-              </div>
-            </div>
-
-            <div className="mt-4 h-3 overflow-hidden rounded-full bg-gray-100">
-              <div
-                className="h-full rounded-full bg-indigo-600 transition-all"
-                style={{
-                  width: `${Math.min(
-                    Math.max(attendanceAnalytics.percentage, 0),
-                    100,
-                  )}%`,
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* =================================================
-            ATTENDANCE CLASS-WISE
-        ================================================= */}
-
-        {attendanceSummary.classWise?.length > 0 ? (
-          <div className="mb-10 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-            <div className="mb-5">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Class-wise Attendance
-              </h2>
-
-              <p className="mt-1 text-sm text-gray-500">
-                Attendance performance for classes handled by you.
-              </p>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {attendanceSummary.classWise.map((item, index) => {
-                const className =
-                  item?.className || item?.class || item?.batch || "Class";
-
-                const subject =
-                  item?.subjectName || item?.subject || item?.courseName || "";
-
-                const percentage = getAttendancePercentage(item);
-
-                return (
-                  <div
-                    key={item?._id || `${className}-${subject}-${index}`}
-                    className="rounded-2xl border border-gray-100 bg-gray-50 p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-gray-900">
-                          {className}
-                        </div>
-
-                        {subject ? (
-                          <div className="mt-1 text-xs text-gray-500">
-                            {subject}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="font-bold text-gray-900">
-                        {percentage.toFixed(1)}%
-                      </div>
-                    </div>
-
-                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
-                      <div
-                        className="h-full rounded-full bg-emerald-500"
-                        style={{
-                          width: `${Math.min(Math.max(percentage, 0), 100)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-
-        {/* =================================================
-            PERIOD / DATE FILTER
-        ================================================= */}
-
-        <div className="mb-8 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-          <div className="mb-5 flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-              <Calendar size={18} />
-            </div>
-
-            <div>
-              <h2 className="font-semibold text-gray-900">Timetable Period</h2>
-
-              <p className="mt-1 text-sm text-gray-500">
-                View timetable by date, week, month or year.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <button
-              type="button"
-              onClick={() => setPeriod("date")}
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                period === "date"
-                  ? "bg-indigo-600 text-white"
-                  : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              Specific Date
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPeriod("week")}
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                period === "week"
-                  ? "bg-indigo-600 text-white"
-                  : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              Week
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPeriod("month")}
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                period === "month"
-                  ? "bg-indigo-600 text-white"
-                  : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              Month
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPeriod("year")}
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                period === "year"
-                  ? "bg-indigo-600 text-white"
-                  : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              Year
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setPeriod("all")}
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                period === "all"
-                  ? "bg-indigo-600 text-white"
-                  : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              All Available
-            </button>
-          </div>
-
-          {period === "date" ? (
-            <div className="mt-4 max-w-sm">
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Select Date
-              </label>
-
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(event) => setSelectedDate(event.target.value)}
-                className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              />
-            </div>
-          ) : null}
-        </div>
-
-        {/* =================================================
-            FILTERS + SORT
-        ================================================= */}
-
-        <div className="mb-8 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-          <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <section className="mb-8 rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/10 print:hidden">
+          <div className="flex flex-col gap-4 border-b border-gray-100 p-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
                 <Filter size={18} />
               </div>
 
               <div>
-                <h2 className="font-semibold text-gray-900">
-                  Filter & Sort Timetable
-                </h2>
+                <h2 className="font-bold text-gray-900">Filter Timetable</h2>
 
-                <p className="mt-1 text-sm text-gray-500">
-                  Search, filter and sort your classes.
+                <p className="mt-1 text-xs text-gray-500">
+                  Search and filter the timetable grid.
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-            >
-              <RotateCcw size={14} />
-              Reset
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {hasActiveFilters ? (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                >
+                  <X size={14} />
+                  Clear Filters
+                </button>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => setShowFilters((previous) => !previous)}
+                className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-200"
+              >
+                <ChevronDown
+                  size={14}
+                  className={`transition ${showFilters ? "rotate-180" : ""}`}
+                />
+                {showFilters ? "Hide Filters" : "Show Filters"}
+              </button>
+            </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <div className="relative">
-              <Search
-                size={16}
-                className="absolute left-3 top-3 text-gray-400"
-              />
+          {showFilters ? (
+            <div className="p-5">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {/* SEARCH */}
 
-              <input
-                type="text"
-                value={filters.search}
-                onChange={(event) =>
-                  setFilters((previous) => ({
-                    ...previous,
-                    search: event.target.value,
-                  }))
-                }
-                placeholder="Search subject, class, room, topic..."
-                className="w-full rounded-xl border border-gray-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              />
+                <div className="relative xl:col-span-2">
+                  <Search
+                    size={17}
+                    className="absolute left-3 top-3 text-gray-400"
+                  />
+
+                  <input
+                    type="text"
+                    value={filters.search}
+                    onChange={(event) =>
+                      setFilters((previous) => ({
+                        ...previous,
+                        search: event.target.value,
+                      }))
+                    }
+                    placeholder="Search subject, class, room, branch..."
+                    className="w-full rounded-xl border border-gray-200 py-2.5 pl-10 pr-4 text-sm text-gray-700 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  />
+                </div>
+
+                {/* CLASS */}
+
+                <select
+                  value={filters.className}
+                  onChange={(event) =>
+                    setFilters((previous) => ({
+                      ...previous,
+                      className: event.target.value,
+                    }))
+                  }
+                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="all">All Classes</option>
+
+                  {classOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+
+                {/* SUBJECT */}
+
+                <select
+                  value={filters.subject}
+                  onChange={(event) =>
+                    setFilters((previous) => ({
+                      ...previous,
+                      subject: event.target.value,
+                    }))
+                  }
+                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="all">All Subjects</option>
+
+                  {subjectOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+
+                {/* BRANCH */}
+
+                <select
+                  value={filters.branch}
+                  onChange={(event) =>
+                    setFilters((previous) => ({
+                      ...previous,
+                      branch: event.target.value,
+                    }))
+                  }
+                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="all">All Branches</option>
+
+                  {branchOptions.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+
+                {/* SEMESTER */}
+
+                <select
+                  value={filters.semester}
+                  onChange={(event) =>
+                    setFilters((previous) => ({
+                      ...previous,
+                      semester: event.target.value,
+                    }))
+                  }
+                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="all">All Semesters</option>
+
+                  {semesterOptions.map((item) => (
+                    <option key={item} value={item}>
+                      Semester {item}
+                    </option>
+                  ))}
+                </select>
+
+                {/* ROOM */}
+
+                <select
+                  value={filters.room}
+                  onChange={(event) =>
+                    setFilters((previous) => ({
+                      ...previous,
+                      room: event.target.value,
+                    }))
+                  }
+                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="all">All Rooms</option>
+
+                  {roomOptions.map((item) => (
+                    <option key={item} value={item}>
+                      Room {item}
+                    </option>
+                  ))}
+                </select>
+
+                {/* DAY */}
+
+                <select
+                  value={filters.day}
+                  onChange={(event) =>
+                    setFilters((previous) => ({
+                      ...previous,
+                      day: event.target.value,
+                    }))
+                  }
+                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="all">All Days</option>
+
+                  {DAYS.map((day) => (
+                    <option key={day} value={day}>
+                      {day}
+                    </option>
+                  ))}
+                </select>
+
+                {/* SESSION TYPE */}
+
+                <select
+                  value={filters.sessionType}
+                  onChange={(event) =>
+                    setFilters((previous) => ({
+                      ...previous,
+                      sessionType: event.target.value,
+                    }))
+                  }
+                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="all">All Session Types</option>
+
+                  {SESSION_TYPES.map((item) => (
+                    <option key={item} value={item}>
+                      {formatSessionType(item)}
+                    </option>
+                  ))}
+                </select>
+
+                {/* SLOT TYPE */}
+
+                <select
+                  value={filters.slotType}
+                  onChange={(event) =>
+                    setFilters((previous) => ({
+                      ...previous,
+                      slotType: event.target.value,
+                    }))
+                  }
+                  className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="all">All Slot Types</option>
+
+                  {SLOT_TYPES.map((item) => (
+                    <option key={item} value={item}>
+                      {formatSlotType(item)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-gray-500">
+                  Showing:
+                </span>
+
+                <Badge type="indigo">{filteredEntries.length} entries</Badge>
+
+                <Badge type="emerald">
+                  {analytics.subjectEntries} teaching slots
+                </Badge>
+
+                <Badge type="default">
+                  {analytics.freeSlots} free grid slots
+                </Badge>
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        {/* ===============================================================
+            TIMETABLE INFORMATION
+        ================================================================ */}
+
+        <section className="mb-8 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10 print:mb-5 print:shadow-none">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">
+                {timetableTitle}
+              </h2>
+
+              <p className="mt-1 text-sm text-gray-500">{institutionName}</p>
             </div>
 
-            <select
-              value={filters.className}
-              onChange={(event) =>
-                setFilters((previous) => ({
-                  ...previous,
-                  className: event.target.value,
-                }))
-              }
-              className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-            >
-              <option value="all">All Classes</option>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm sm:grid-cols-4">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                  Academic Year
+                </div>
 
-              {classOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
+                <div className="mt-1 font-semibold text-gray-900">
+                  {academicYear || "--"}
+                </div>
+              </div>
 
-            <select
-              value={filters.subject}
-              onChange={(event) =>
-                setFilters((previous) => ({
-                  ...previous,
-                  subject: event.target.value,
-                }))
-              }
-              className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-            >
-              <option value="all">All Subjects</option>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                  Revision
+                </div>
 
-              {subjectOptions.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
+                <div className="mt-1 font-semibold text-gray-900">
+                  {normalize(timetable?.revisionNumber) || "--"}
+                </div>
+              </div>
 
-            <select
-              value={filters.status}
-              onChange={(event) =>
-                setFilters((previous) => ({
-                  ...previous,
-                  status: event.target.value,
-                }))
-              }
-              className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-            >
-              <option value="all">All Status</option>
-              <option value="scheduled">Scheduled</option>
-              <option value="completed">Completed</option>
-              <option value="not_taken">Not Taken</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="rescheduled">Rescheduled</option>
-            </select>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                  Faculty
+                </div>
 
-            <select
-              value={filters.day}
-              onChange={(event) =>
-                setFilters((previous) => ({
-                  ...previous,
-                  day: event.target.value,
-                }))
-              }
-              className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-            >
-              <option value="all">All Days</option>
-              <option value="Monday">Monday</option>
-              <option value="Tuesday">Tuesday</option>
-              <option value="Wednesday">Wednesday</option>
-              <option value="Thursday">Thursday</option>
-              <option value="Friday">Friday</option>
-              <option value="Saturday">Saturday</option>
-              <option value="Sunday">Sunday</option>
-            </select>
+                <div className="mt-1 font-semibold text-gray-900">
+                  {facultyName}
+                </div>
+              </div>
 
-            <select
-              value={sortBy}
-              onChange={(event) => changeSort(event.target.value)}
-              className="rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-            >
-              <option value="date">Sort by Date</option>
-              <option value="subject">Sort by Subject</option>
-              <option value="class">Sort by Class</option>
-              <option value="status">Sort by Status</option>
-              <option value="room">Sort by Room</option>
-            </select>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                  Status
+                </div>
+
+                <div className="mt-1 font-semibold capitalize text-gray-900">
+                  {normalize(timetable?.status) || "--"}
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {[
-              ["date", "Date"],
-              ["subject", "Subject"],
-              ["class", "Class"],
-              ["status", "Status"],
-              ["room", "Room"],
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => changeSort(value)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition ${
-                  sortBy === value
-                    ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
-                    : "border border-gray-200 text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                {sortBy === value ? (
-                  sortDirection === "asc" ? (
-                    <ArrowUpAZ size={13} />
-                  ) : (
-                    <ArrowDownAZ size={13} />
-                  )
-                ) : (
-                  <ListFilter size={13} />
-                )}
+          {timetable?.lunchStartTime || timetable?.lunchEndTime ? (
+            <div className="mt-5 border-t border-gray-100 pt-4">
+              <div className="text-xs text-gray-500">
+                Lunch Break:
+                <span className="ml-1 font-semibold text-gray-700">
+                  {formatTime(timetable?.lunchStartTime)}
+                  {" - "}
+                  {formatTime(timetable?.lunchEndTime)}
+                </span>
+              </div>
+            </div>
+          ) : null}
+        </section>
 
-                {label}
-              </button>
-            ))}
+        {/* ===============================================================
+            TIMETABLE GRID
+        ================================================================ */}
+
+        <section className="mb-8 rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/10 print:shadow-none print:ring-0">
+          <div className="border-b border-gray-100 p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Weekly Timetable
+                </h2>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  Monday to Saturday · Period-wise schedule
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Badge type="indigo">{displayPeriods.length} Periods</Badge>
+
+                <Badge type="emerald">{filteredEntries.length} Entries</Badge>
+
+                {lastUpdated ? (
+                  <Badge type="default">
+                    Updated{" "}
+                    {lastUpdated.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* =================================================
-            EXPORT / PREVIEW
-        ================================================= */}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1500px] border-collapse">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 z-30 w-[150px] min-w-[150px] border-b border-r border-gray-200 bg-gray-100 px-4 py-4 text-left text-xs font-bold uppercase tracking-wide text-gray-700">
+                    Day
+                  </th>
 
-        <div className="mb-8 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
+                  {displayPeriods.map((period) => (
+                    <th
+                      key={period.period}
+                      className="border-b border-r border-gray-200 bg-gray-100 px-3 py-3 text-center"
+                    >
+                      <div className="text-sm font-bold text-gray-900">
+                        Period {period.period}
+                      </div>
+
+                      <div className="mt-1 whitespace-nowrap text-[10px] font-medium text-gray-500">
+                        {formatTime(period.startTime)}
+                        {" - "}
+                        {formatTime(period.endTime)}
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {DAYS.map((day) => {
+                  const dayEntries = filteredEntries.filter(
+                    (entry) => normalize(entry.day) === day,
+                  );
+
+                  const dayHasEntries = dayEntries.length > 0;
+
+                  return (
+                    <tr key={day}>
+                      <td className="sticky left-0 z-20 border-b border-r border-gray-200 bg-gray-50 p-3 align-top">
+                        <div className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-900/5">
+                          <div className="text-sm font-bold text-gray-900">
+                            {day}
+                          </div>
+
+                          <div className="mt-1 text-[10px] text-gray-500">
+                            {dayEntries.length}{" "}
+                            {dayEntries.length === 1 ? "class" : "classes"}
+                          </div>
+
+                          {!dayHasEntries ? (
+                            <div className="mt-2 text-[10px] text-gray-300">
+                              No classes
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
+
+                      {displayPeriods.map((period) => {
+                        const entry = entryMap.get(`${day}-${period.period}`);
+
+                        return (
+                          <td
+                            key={`${day}-${period.period}`}
+                            className="border-b border-r border-gray-200 bg-gray-50/40 p-2 align-top"
+                          >
+                            <TimetableCell entry={entry} />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* GRID LEGEND */}
+
+          <div className="flex flex-wrap gap-3 border-t border-gray-100 p-4">
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span className="h-3 w-3 rounded bg-indigo-100 ring-1 ring-indigo-200" />
+              Theory
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span className="h-3 w-3 rounded bg-purple-100 ring-1 ring-purple-200" />
+              Lab
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span className="h-3 w-3 rounded bg-gray-100 ring-1 ring-gray-200" />
+              Free / Break
+            </div>
+          </div>
+        </section>
+
+        {/* ===============================================================
+            SUBJECT SUMMARY
+        ================================================================ */}
+
+        <section className="mb-8 grid gap-6 lg:grid-cols-2 print:hidden">
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
+            <div className="mb-5">
+              <h2 className="font-bold text-gray-900">Subject Summary</h2>
+
+              <p className="mt-1 text-xs text-gray-500">
+                Number of timetable periods assigned to each subject.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {Array.from(
+                filteredEntries.reduce((map, entry) => {
+                  const key =
+                    normalize(entry.subjectCode) ||
+                    normalize(entry.subjectName) ||
+                    "Unnamed";
+
+                  map.set(key, (map.get(key) || 0) + 1);
+
+                  return map;
+                }, new Map()),
+              )
+                .sort((a, b) => b[1] - a[1])
+                .map(([subject, count]) => (
+                  <div
+                    key={subject}
+                    className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-gray-800">
+                        {subject}
+                      </div>
+                    </div>
+
+                    <div className="ml-4 rounded-full bg-white px-3 py-1 text-xs font-bold text-indigo-700 ring-1 ring-gray-200">
+                      {count}
+                    </div>
+                  </div>
+                ))}
+
+              {filteredEntries.length === 0 ? (
+                <div className="py-8 text-center text-sm text-gray-400">
+                  No subjects match the current filters.
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
+            <div className="mb-5">
+              <h2 className="font-bold text-gray-900">Class Summary</h2>
+
+              <p className="mt-1 text-xs text-gray-500">
+                Number of timetable periods assigned to each class.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {Array.from(
+                filteredEntries.reduce((map, entry) => {
+                  const key =
+                    normalize(entry.className) || "Class not specified";
+
+                  map.set(key, (map.get(key) || 0) + 1);
+
+                  return map;
+                }, new Map()),
+              )
+                .sort((a, b) => b[1] - a[1])
+                .map(([className, count]) => (
+                  <div
+                    key={className}
+                    className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Users size={15} className="shrink-0 text-indigo-500" />
+
+                      <div className="truncate text-sm font-semibold text-gray-800">
+                        {className}
+                      </div>
+                    </div>
+
+                    <div className="ml-4 rounded-full bg-white px-3 py-1 text-xs font-bold text-indigo-700 ring-1 ring-gray-200">
+                      {count}
+                    </div>
+                  </div>
+                ))}
+
+              {filteredEntries.length === 0 ? (
+                <div className="py-8 text-center text-sm text-gray-400">
+                  No classes match the current filters.
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        {/* ===============================================================
+            EXPORT PANEL
+        ================================================================ */}
+
+        <section className="mb-8 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10 print:hidden">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="font-semibold text-gray-900">Preview & Export</h2>
+              <h2 className="text-lg font-bold text-gray-900">
+                Export Timetable
+              </h2>
 
               <p className="mt-1 text-sm text-gray-500">
                 Export the currently filtered timetable.
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={printTimetable}
-                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
               >
-                <Printer size={16} />
-                Preview / PDF
+                <FileText size={17} />
+                Print / PDF
               </button>
 
               <button
                 type="button"
                 onClick={exportWord}
-                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
               >
-                <FileText size={16} />
+                <FileText size={17} />
                 Word
               </button>
 
               <button
                 type="button"
                 onClick={exportExcel}
-                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
               >
-                <FileSpreadsheet size={16} />
+                <Download size={17} />
                 Excel
               </button>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* =================================================
-            TIMETABLE
-        ================================================= */}
-
-        <div className="mb-10 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">
-                {period === "week"
-                  ? "Current Week Timetable"
-                  : "Faculty Timetable"}
-              </h2>
-
-              <p className="mt-1 text-sm text-gray-500">
-                Showing {filteredTimetable.length} of{" "}
-                {periodFilteredTimetable.length} available classes.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => navigate(NAVIGATION.timetable)}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-            >
-              <Settings2 size={15} />
-              Update Timetable
-            </button>
-          </div>
-
-          {Object.keys(groupedTimetable).length === 0 ? (
-            <div className="rounded-2xl bg-gray-50 px-5 py-12 text-center ring-1 ring-gray-200">
-              <CalendarDays size={34} className="mx-auto mb-3 text-gray-400" />
-
-              <div className="font-semibold text-gray-900">
-                No timetable entries found
-              </div>
-
-              <div className="mt-1 text-sm text-gray-500">
-                Try another date, period or filter.
-              </div>
-
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="mt-5 rounded-full border border-gray-200 bg-white px-5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-              >
-                Clear Filters
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              {Object.entries(groupedTimetable).map(([dateKey, classes]) => {
-                const date =
-                  dateKey === "unknown"
-                    ? null
-                    : new Date(`${dateKey}T00:00:00`);
-
-                return (
-                  <div
-                    key={dateKey}
-                    className="overflow-hidden rounded-2xl border border-gray-100"
-                  >
-                    <div className="flex flex-col gap-3 bg-gray-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="font-semibold text-gray-900">
-                          {date ? formatDay(date) : "Date Not Available"}
-                        </div>
-
-                        <div className="mt-1 text-xs text-gray-500">
-                          {date ? formatDate(date) : "No date supplied by API"}
-                        </div>
-                      </div>
-
-                      <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-600 ring-1 ring-gray-200">
-                        {classes.length}{" "}
-                        {classes.length === 1 ? "Class" : "Classes"}
-                      </div>
-                    </div>
-
-                    <div className="divide-y divide-gray-100">
-                      {classes.map((item, index) => {
-                        const status = getScheduleStatus(item);
-
-                        const topic = getTopic(item);
-
-                        return (
-                          <div
-                            key={item?._id || `${dateKey}-${index}`}
-                            className="p-5 transition hover:bg-gray-50"
-                          >
-                            <div className="grid gap-5 lg:grid-cols-[150px_1fr_auto] lg:items-center">
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-                                  <Clock3 size={18} />
-                                </div>
-
-                                <div>
-                                  <div className="font-semibold text-gray-900">
-                                    {formatTime(getStartTime(item))}
-                                  </div>
-
-                                  <div className="mt-1 text-xs text-gray-500">
-                                    {formatTime(getEndTime(item))}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="min-w-0">
-                                <div className="text-base font-semibold text-gray-900">
-                                  {getSubject(item)}
-                                </div>
-
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                                    <Users size={13} />
-                                    {getClassName(item)}
-                                  </span>
-
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
-                                    Room: {getRoom(item)}
-                                  </span>
-                                </div>
-
-                                {topic ? (
-                                  <div className="mt-3 flex items-start gap-2 text-sm text-gray-600">
-                                    <BookOpen
-                                      size={15}
-                                      className="mt-0.5 shrink-0 text-indigo-500"
-                                    />
-
-                                    <span>
-                                      <span className="font-semibold text-gray-800">
-                                        Topic:
-                                      </span>{" "}
-                                      {topic}
-                                    </span>
-                                  </div>
-                                ) : null}
-
-                                {getReason(item) ? (
-                                  <div className="mt-2 flex items-start gap-2 text-sm text-rose-600">
-                                    <AlertCircle
-                                      size={15}
-                                      className="mt-0.5 shrink-0"
-                                    />
-
-                                    <span>
-                                      <span className="font-semibold">
-                                        Reason:
-                                      </span>{" "}
-                                      {getReason(item)}
-                                    </span>
-                                  </div>
-                                ) : null}
-                              </div>
-
-                              <div className="flex flex-col items-start gap-3 lg:items-end">
-                                <StatusBadge status={status} />
-
-                                <div className="flex flex-wrap gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      navigate(NAVIGATION.classTracking, {
-                                        state: {
-                                          timetableItem: item,
-                                        },
-                                      })
-                                    }
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
-                                  >
-                                    <CheckCircle2 size={13} />
-                                    Class Status
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      navigate(NAVIGATION.attendance, {
-                                        state: {
-                                          timetableItem: item,
-                                        },
-                                      })
-                                    }
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
-                                  >
-                                    <ClipboardCheck size={13} />
-                                    Attendance
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* =================================================
-            OPERATION SUMMARY
-        ================================================= */}
-
-        <div className="mb-10">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Faculty Work Summary
-            </h2>
-
-            <p className="mt-1 text-sm text-gray-500">
-              Quick operational overview of your teaching activities.
-            </p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-                  <CalendarCheck size={18} />
-                </div>
-
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500">
-                    Classes
-                  </div>
-
-                  <div className="text-xl font-bold text-gray-900">
-                    {timetableAnalytics.total}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 text-sm text-gray-500">
-                Total timetable entries in the selected period.
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-                  <CheckCircle2 size={18} />
-                </div>
-
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500">
-                    Completion
-                  </div>
-
-                  <div className="text-xl font-bold text-gray-900">
-                    {overallAnalytics.completionPercentage.toFixed(1)}%
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 text-sm text-gray-500">
-                Classes currently marked completed.
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-700">
-                  <RotateCcw size={18} />
-                </div>
-
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500">
-                    Rescheduled
-                  </div>
-
-                  <div className="text-xl font-bold text-gray-900">
-                    {timetableAnalytics.rescheduled}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 text-sm text-gray-500">
-                Classes requiring another schedule.
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-700">
-                  <XCircle size={18} />
-                </div>
-
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-gray-500">
-                    Cancelled
-                  </div>
-
-                  <div className="text-xl font-bold text-gray-900">
-                    {timetableAnalytics.cancelled}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 text-sm text-gray-500">
-                Cancelled classes in the selected period.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* =================================================
-            BOTTOM OPERATIONS
-        ================================================= */}
-
-        <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-900/10">
-          <div className="mb-5">
-            <h2 className="text-lg font-semibold text-gray-900">
-              More Faculty Operations
-            </h2>
-
-            <p className="mt-1 text-sm text-gray-500">
-              Other areas that can be connected to this dashboard as your
-              faculty module grows.
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <button
-              type="button"
-              onClick={() => navigate(NAVIGATION.classTracking)}
-              className="flex items-center gap-3 rounded-xl border border-gray-200 p-4 text-left transition hover:bg-gray-50"
-            >
-              <CheckCircle2 size={18} className="text-emerald-600" />
-
-              <div>
-                <div className="text-sm font-semibold text-gray-900">
-                  Class Tracking
-                </div>
-
-                <div className="text-xs text-gray-500">
-                  Taken / not taken / cancelled
-                </div>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate(NAVIGATION.attendance)}
-              className="flex items-center gap-3 rounded-xl border border-gray-200 p-4 text-left transition hover:bg-gray-50"
-            >
-              <ClipboardCheck size={18} className="text-indigo-600" />
-
-              <div>
-                <div className="text-sm font-semibold text-gray-900">
-                  Student Attendance
-                </div>
-
-                <div className="text-xs text-gray-500">
-                  Mark and update attendance
-                </div>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate(NAVIGATION.timetable)}
-              className="flex items-center gap-3 rounded-xl border border-gray-200 p-4 text-left transition hover:bg-gray-50"
-            >
-              <CalendarDays size={18} className="text-purple-600" />
-
-              <div>
-                <div className="text-sm font-semibold text-gray-900">
-                  Timetable Management
-                </div>
-
-                <div className="text-xs text-gray-500">
-                  Add, edit and reschedule
-                </div>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={printTimetable}
-              className="flex items-center gap-3 rounded-xl border border-gray-200 p-4 text-left transition hover:bg-gray-50"
-            >
-              <Download size={18} className="text-sky-600" />
-
-              <div>
-                <div className="text-sm font-semibold text-gray-900">
-                  Export Reports
-                </div>
-
-                <div className="text-xs text-gray-500">Word / Excel / PDF</div>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {/* =================================================
+        {/* ===============================================================
             FOOTER
-        ================================================= */}
+        ================================================================ */}
 
-        <div className="py-8 text-center text-xs text-gray-400">
-          Faculty Dashboard · {new Date().getFullYear()}
+        <div className="py-6 text-center text-xs text-gray-400 print:hidden">
+          Faculty Timetable Dashboard · {new Date().getFullYear()}
         </div>
       </div>
+
+      {/* ===============================================================
+          PRINT CSS
+      ================================================================ */}
+
+      <style>{`
+        @media print {
+          @page {
+            size: landscape;
+            margin: 8mm;
+          }
+
+          body {
+            background: white !important;
+          }
+
+          .min-h-screen {
+            min-height: auto !important;
+          }
+
+          table {
+            page-break-inside: auto;
+          }
+
+          tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+          }
+
+          thead {
+            display: table-header-group;
+          }
+
+          .sticky {
+            position: static !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

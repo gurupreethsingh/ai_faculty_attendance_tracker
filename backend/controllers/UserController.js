@@ -1,21 +1,16 @@
 const User = require("../models/UserModel");
 const crypto = require("crypto");
-
-// HELPER FUNCTIONS
+const mongoose = require("mongoose");
+const jwt = require("jsonwebtoken");
 
 const sanitizeUser = (user) => {
   if (!user) return null;
-
   const userObj = user.toObject ? user.toObject() : { ...user };
-
   delete userObj.password;
   delete userObj.resetPasswordToken;
   delete userObj.resetPasswordExpire;
-
   return userObj;
 };
-
-// VALIDATION HELPERS
 
 const allowedRoles = [
   "superadmin",
@@ -33,31 +28,18 @@ const allowedRoles = [
   "user",
 ];
 
-const isValidRole = (role) => {
-  return allowedRoles.includes(role);
-};
+const isValidRole = (role) => allowedRoles.includes(role);
 
 const parseBoolean = (value) => {
-  if (value === undefined || value === null || value === "") {
-    return undefined;
-  }
-
-  if (value === true || value === "true" || value === "1") {
-    return true;
-  }
-
-  if (value === false || value === "false" || value === "0") {
-    return false;
-  }
-
+  if (value === undefined || value === null || value === "") return undefined;
+  if (value === true || value === "true" || value === "1") return true;
+  if (value === false || value === "false" || value === "0") return false;
   return undefined;
 };
 
-const escapeRegex = (value) => {
+const escapeRegex = (value = "") => {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
-
-// REGISTER USER
 
 exports.registerUser = async (req, res) => {
   try {
@@ -80,10 +62,6 @@ exports.registerUser = async (req, res) => {
       profileImage,
     } = req.body;
 
-    // -----------------------------------------------
-    // REQUIRED FIELDS
-    // -----------------------------------------------
-
     if (!fullName || !email || !password) {
       return res.status(400).json({
         success: false,
@@ -91,15 +69,7 @@ exports.registerUser = async (req, res) => {
       });
     }
 
-    // -----------------------------------------------
-    // NORMALIZE EMAIL
-    // -----------------------------------------------
-
     const normalizedEmail = String(email).trim().toLowerCase();
-
-    // -----------------------------------------------
-    // CHECK EXISTING USER
-    // -----------------------------------------------
 
     const existingUser = await User.findOne({
       email: normalizedEmail,
@@ -112,24 +82,7 @@ exports.registerUser = async (req, res) => {
       });
     }
 
-    // -----------------------------------------------
-    // PUBLIC REGISTRATION ROLE
-    // -----------------------------------------------
-
-    /*
-     * Prevent public registration from creating
-     * privileged accounts.
-     *
-     * Public registration creates a normal user
-     * unless your application explicitly permits
-     * another role.
-     */
-
     const userRole = role && isValidRole(role) ? role : "user";
-
-    // -----------------------------------------------
-    // CREATE USER
-    // -----------------------------------------------
 
     const user = await User.create({
       fullName: String(fullName).trim(),
@@ -149,10 +102,6 @@ exports.registerUser = async (req, res) => {
       preferredCurrency: preferredCurrency || "INR",
       profileImage: profileImage || "",
     });
-
-    // -----------------------------------------------
-    // JWT
-    // -----------------------------------------------
 
     const token = user.getJwtToken();
 
@@ -189,8 +138,6 @@ exports.registerUser = async (req, res) => {
   }
 };
 
-// LOGIN USER
-
 exports.loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -204,7 +151,6 @@ exports.loginUser = async (req, res) => {
 
     const normalizedEmail = String(email).trim().toLowerCase();
 
-    // password has select:false, therefore explicitly select it
     const user = await User.findOne({
       email: normalizedEmail,
     }).select("+password");
@@ -216,20 +162,12 @@ exports.loginUser = async (req, res) => {
       });
     }
 
-    // -----------------------------------------------
-    // ACCOUNT STATUS
-    // -----------------------------------------------
-
     if (!user.isActive) {
       return res.status(403).json({
         success: false,
         message: "Your account is inactive. Please contact the administrator.",
       });
     }
-
-    // -----------------------------------------------
-    // PASSWORD
-    // -----------------------------------------------
 
     const passwordMatch = await user.comparePassword(password);
 
@@ -239,10 +177,6 @@ exports.loginUser = async (req, res) => {
         message: "Invalid email or password.",
       });
     }
-
-    // -----------------------------------------------
-    // JWT
-    // -----------------------------------------------
 
     const token = user.getJwtToken();
 
@@ -263,28 +197,29 @@ exports.loginUser = async (req, res) => {
   }
 };
 
-// REFRESH TOKEN
-
 exports.refreshToken = async (req, res) => {
   try {
-    /*
-     * Your current UserModel generates access JWTs.
-     *
-     * If you later add refresh-token storage,
-     * this function can be upgraded to a true
-     * refresh-token implementation.
-     */
+    const bodyToken =
+      req.body?.token || req.body?.accessToken || req.body?.access_token || "";
 
-    const { token } = req.body;
+    const headerToken = req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.substring(7)
+      : "";
+
+    const cookieToken =
+      req.cookies?.token ||
+      req.cookies?.accessToken ||
+      req.cookies?.access_token ||
+      "";
+
+    const token = bodyToken || headerToken || cookieToken;
 
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: "Refresh token is required.",
+        message: "Authentication token is required.",
       });
     }
-
-    const jwt = require("jsonwebtoken");
 
     const secret = process.env.JWT_SECRET;
 
@@ -302,11 +237,20 @@ exports.refreshToken = async (req, res) => {
     } catch (error) {
       return res.status(401).json({
         success: false,
-        message: "Invalid or expired token.",
+        message: "Invalid authentication token.",
       });
     }
 
-    const user = await User.findById(decoded.id);
+    const userId = decoded?.id || decoded?._id;
+
+    if (!userId || !mongoose.isValidObjectId(userId)) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid authentication token.",
+      });
+    }
+
+    const user = await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
@@ -341,23 +285,11 @@ exports.refreshToken = async (req, res) => {
   }
 };
 
-// LOGOUT
-
 exports.logoutUser = async (req, res) => {
   try {
-    /*
-     * JWT is stateless.
-     *
-     * Actual token removal should happen on the
-     * frontend by deleting the stored token.
-     *
-     * This endpoint exists so the frontend can
-     * consistently call /logout.
-     */
-
     return res.status(200).json({
       success: true,
-      message: "Logout successful. Please remove the token from the client.",
+      message: "Logout successful.",
     });
   } catch (error) {
     console.error("logoutUser error:", error);
@@ -368,8 +300,6 @@ exports.logoutUser = async (req, res) => {
     });
   }
 };
-
-// GET MY PROFILE
 
 exports.getMyProfile = async (req, res) => {
   try {
@@ -406,8 +336,6 @@ exports.getMyProfile = async (req, res) => {
   }
 };
 
-// UPDATE MY PROFILE
-
 exports.updateMyProfile = async (req, res) => {
   try {
     const userId = req.user?._id || req.user?.id;
@@ -443,10 +371,6 @@ exports.updateMyProfile = async (req, res) => {
       }
     }
 
-    // -----------------------------------------------
-    // EMAIL
-    // -----------------------------------------------
-
     if (req.body.email !== undefined) {
       const email = String(req.body.email).trim().toLowerCase();
 
@@ -464,10 +388,6 @@ exports.updateMyProfile = async (req, res) => {
 
       updates.email = email;
     }
-
-    // -----------------------------------------------
-    // DO NOT ALLOW ROLE / STATUS CHANGES HERE
-    // -----------------------------------------------
 
     delete updates.role;
     delete updates.isActive;
@@ -504,12 +424,9 @@ exports.updateMyProfile = async (req, res) => {
   }
 };
 
-// CHANGE PASSWORD
-
 exports.changePassword = async (req, res) => {
   try {
     const userId = req.user?._id || req.user?.id;
-
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
@@ -545,7 +462,6 @@ exports.changePassword = async (req, res) => {
     }
 
     user.password = newPassword;
-
     await user.save();
 
     return res.status(200).json({
@@ -562,8 +478,6 @@ exports.changePassword = async (req, res) => {
     });
   }
 };
-
-// FORGOT PASSWORD
 
 exports.forgotPassword = async (req, res) => {
   try {
@@ -582,10 +496,6 @@ exports.forgotPassword = async (req, res) => {
       email: normalizedEmail,
     }).select("+resetPasswordToken +resetPasswordExpire");
 
-    /*
-     * Do not reveal whether an email exists.
-     */
-
     if (!user) {
       return res.status(200).json({
         success: true,
@@ -596,17 +506,9 @@ exports.forgotPassword = async (req, res) => {
 
     const resetToken = user.getResetPasswordToken();
 
-    await user.save({ validateBeforeSave: false });
-
-    /*
-     * In production, send resetToken through email.
-     *
-     * DO NOT expose this token in production responses.
-     *
-     * For development, you may enable:
-     *
-     * process.env.NODE_ENV === "development"
-     */
+    await user.save({
+      validateBeforeSave: false,
+    });
 
     const response = {
       success: true,
@@ -629,8 +531,6 @@ exports.forgotPassword = async (req, res) => {
     });
   }
 };
-
-// RESET PASSWORD
 
 exports.resetPassword = async (req, res) => {
   try {
@@ -702,13 +602,11 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
-// GET USER BY ID
-
 exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!id || !require("mongoose").isValidObjectId(id)) {
+    if (!id || !mongoose.isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
         message: "Invalid user ID.",
@@ -738,8 +636,6 @@ exports.getUserById = async (req, res) => {
     });
   }
 };
-
-// CREATE USER - ADMIN
 
 exports.createUser = async (req, res) => {
   try {
@@ -833,9 +729,6 @@ exports.createUser = async (req, res) => {
   }
 };
 
-// GET ALL USERS
-// FILTER + SEARCH + SORT + PAGINATION
-
 exports.getAllUsers = async (req, res) => {
   try {
     const {
@@ -856,21 +749,12 @@ exports.getAllUsers = async (req, res) => {
     } = req.query;
 
     const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
-
     const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 200);
-
-    // -----------------------------------------------
-    // FILTER
-    // -----------------------------------------------
 
     const filter = {};
 
-    // -----------------------------------------------
-    // SEARCH
-    // -----------------------------------------------
-
-    if (search.trim()) {
-      const regex = new RegExp(escapeRegex(search.trim()), "i");
+    if (String(search).trim()) {
+      const regex = new RegExp(escapeRegex(String(search).trim()), "i");
 
       filter.$or = [
         { fullName: regex },
@@ -882,10 +766,6 @@ exports.getAllUsers = async (req, res) => {
         { postalCode: regex },
       ];
     }
-
-    // -----------------------------------------------
-    // ROLE
-    // -----------------------------------------------
 
     if (role) {
       const roles = String(role)
@@ -905,50 +785,40 @@ exports.getAllUsers = async (req, res) => {
       filter.role = roles.length === 1 ? roles[0] : { $in: roles };
     }
 
-    // -----------------------------------------------
-    // ACTIVE STATUS
-    // -----------------------------------------------
-
     const activeValue = parseBoolean(isActive);
 
     if (activeValue !== undefined) {
       filter.isActive = activeValue;
     }
 
-    // -----------------------------------------------
-    // LOCATION FILTERS
-    // -----------------------------------------------
-
     if (city) {
-      filter.city = new RegExp(`^${escapeRegex(city.trim())}$`, "i");
+      filter.city = new RegExp(`^${escapeRegex(String(city).trim())}$`, "i");
     }
 
     if (state) {
-      filter.state = new RegExp(`^${escapeRegex(state.trim())}$`, "i");
+      filter.state = new RegExp(`^${escapeRegex(String(state).trim())}$`, "i");
     }
 
     if (country) {
-      filter.country = new RegExp(`^${escapeRegex(country.trim())}$`, "i");
-    }
-
-    // -----------------------------------------------
-    // OTHER FILTERS
-    // -----------------------------------------------
-
-    if (gender) {
-      filter.gender = new RegExp(`^${escapeRegex(gender.trim())}$`, "i");
-    }
-
-    if (nationality) {
-      filter.nationality = new RegExp(
-        `^${escapeRegex(nationality.trim())}$`,
+      filter.country = new RegExp(
+        `^${escapeRegex(String(country).trim())}$`,
         "i",
       );
     }
 
-    // -----------------------------------------------
-    // DATE FILTER
-    // -----------------------------------------------
+    if (gender) {
+      filter.gender = new RegExp(
+        `^${escapeRegex(String(gender).trim())}$`,
+        "i",
+      );
+    }
+
+    if (nationality) {
+      filter.nationality = new RegExp(
+        `^${escapeRegex(String(nationality).trim())}$`,
+        "i",
+      );
+    }
 
     if (fromDate || toDate) {
       filter.createdAt = {};
@@ -977,14 +847,9 @@ exports.getAllUsers = async (req, res) => {
         }
 
         end.setHours(23, 59, 59, 999);
-
         filter.createdAt.$lte = end;
       }
     }
-
-    // -----------------------------------------------
-    // SORTING
-    // -----------------------------------------------
 
     const allowedSortFields = [
       "fullName",
@@ -1008,15 +873,7 @@ exports.getAllUsers = async (req, res) => {
       [safeSortBy]: safeSortOrder,
     };
 
-    // -----------------------------------------------
-    // COUNT
-    // -----------------------------------------------
-
     const totalUsers = await User.countDocuments(filter);
-
-    // -----------------------------------------------
-    // DATA
-    // -----------------------------------------------
 
     const users = await User.find(filter)
       .sort(sort)
@@ -1028,7 +885,6 @@ exports.getAllUsers = async (req, res) => {
     return res.status(200).json({
       success: true,
       users: users.map(sanitizeUser),
-
       pagination: {
         currentPage: pageNumber,
         limit: limitNumber,
@@ -1037,7 +893,6 @@ exports.getAllUsers = async (req, res) => {
         hasNextPage: pageNumber < totalPages,
         hasPreviousPage: pageNumber > 1,
       },
-
       filters: {
         search,
         role,
@@ -1062,14 +917,11 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// UPDATE USER
-// ADMIN
-
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!require("mongoose").isValidObjectId(id)) {
+    if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
         message: "Invalid user ID.",
@@ -1103,10 +955,6 @@ exports.updateUser = async (req, res) => {
       }
     }
 
-    // -----------------------------------------------
-    // EMAIL
-    // -----------------------------------------------
-
     if (updates.email !== undefined) {
       updates.email = String(updates.email).trim().toLowerCase();
 
@@ -1122,10 +970,6 @@ exports.updateUser = async (req, res) => {
         });
       }
     }
-
-    // -----------------------------------------------
-    // ROLE
-    // -----------------------------------------------
 
     if (updates.role !== undefined && !isValidRole(updates.role)) {
       return res.status(400).json({
@@ -1173,13 +1017,12 @@ exports.updateUser = async (req, res) => {
   }
 };
 
-// UPDATE USER ROLE
 exports.updateUserRole = async (req, res) => {
   try {
     const { id } = req.params;
     const { role } = req.body;
 
-    if (!require("mongoose").isValidObjectId(id)) {
+    if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
         message: "Invalid user ID.",
@@ -1229,7 +1072,6 @@ exports.updateUserRole = async (req, res) => {
   }
 };
 
-// ACTIVATE USER
 exports.activateUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1269,7 +1111,6 @@ exports.activateUser = async (req, res) => {
   }
 };
 
-// DEACTIVATE USER
 exports.deactivateUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -1300,6 +1141,7 @@ exports.deactivateUser = async (req, res) => {
     });
   } catch (error) {
     console.error("deactivateUser error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to deactivate user.",
@@ -1308,12 +1150,11 @@ exports.deactivateUser = async (req, res) => {
   }
 };
 
-// DELETE USER
 exports.deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!require("mongoose").isValidObjectId(id)) {
+    if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
         message: "Invalid user ID.",
@@ -1330,6 +1171,7 @@ exports.deleteUser = async (req, res) => {
     }
 
     await User.findByIdAndDelete(id);
+
     return res.status(200).json({
       success: true,
       message: "User deleted successfully.",
@@ -1346,7 +1188,6 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
-// BULK ACTIVATE USERS
 exports.bulkActivateUsers = async (req, res) => {
   try {
     const { userIds } = req.body;
@@ -1386,7 +1227,6 @@ exports.bulkActivateUsers = async (req, res) => {
   }
 };
 
-// BULK DEACTIVATE USERS
 exports.bulkDeactivateUsers = async (req, res) => {
   try {
     const { userIds } = req.body;
@@ -1426,7 +1266,6 @@ exports.bulkDeactivateUsers = async (req, res) => {
   }
 };
 
-// BULK UPDATE ROLE
 exports.bulkUpdateRole = async (req, res) => {
   try {
     const { userIds, role } = req.body;
@@ -1474,7 +1313,6 @@ exports.bulkUpdateRole = async (req, res) => {
   }
 };
 
-// BULK DELETE USERS
 exports.bulkDeleteUsers = async (req, res) => {
   try {
     const { userIds } = req.body;
@@ -1506,7 +1344,6 @@ exports.bulkDeleteUsers = async (req, res) => {
   }
 };
 
-// GET USERS BY ROLE
 exports.getUsersByRole = async (req, res) => {
   try {
     const { role } = req.params;
@@ -1541,7 +1378,6 @@ exports.getUsersByRole = async (req, res) => {
   }
 };
 
-// GET ACTIVE USERS
 exports.getActiveUsers = async (req, res) => {
   try {
     const users = await User.find({
@@ -1566,7 +1402,6 @@ exports.getActiveUsers = async (req, res) => {
   }
 };
 
-// GET INACTIVE USERS
 exports.getInactiveUsers = async (req, res) => {
   try {
     const users = await User.find({
@@ -1583,15 +1418,14 @@ exports.getInactiveUsers = async (req, res) => {
   } catch (error) {
     console.error("getInactiveUsers error:", error);
 
-    return res.status(200).json({
-      success: true,
-      count: users.length,
-      users: users.map(sanitizeUser),
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch inactive users.",
+      error: error.message,
     });
   }
 };
 
-// USER STATISTICS
 exports.getUserStatistics = async (req, res) => {
   try {
     const [
@@ -1604,15 +1438,12 @@ exports.getUserStatistics = async (req, res) => {
       countryStatistics,
     ] = await Promise.all([
       User.countDocuments(),
-
       User.countDocuments({
         isActive: true,
       }),
-
       User.countDocuments({
         isActive: false,
       }),
-
       User.aggregate([
         {
           $group: {
@@ -1628,7 +1459,6 @@ exports.getUserStatistics = async (req, res) => {
           },
         },
       ]),
-
       User.aggregate([
         {
           $match: {
@@ -1651,7 +1481,6 @@ exports.getUserStatistics = async (req, res) => {
           },
         },
       ]),
-
       User.aggregate([
         {
           $match: {
@@ -1674,7 +1503,6 @@ exports.getUserStatistics = async (req, res) => {
           },
         },
       ]),
-
       User.aggregate([
         {
           $match: {
@@ -1701,12 +1529,10 @@ exports.getUserStatistics = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-
       statistics: {
         totalUsers,
         activeUsers,
         inactiveUsers,
-
         roleStatistics,
         cityStatistics,
         stateStatistics,
@@ -1724,7 +1550,6 @@ exports.getUserStatistics = async (req, res) => {
   }
 };
 
-// SEARCH USERS
 exports.searchUsers = async (req, res) => {
   try {
     const { q } = req.query;
@@ -1737,6 +1562,7 @@ exports.searchUsers = async (req, res) => {
     }
 
     const regex = new RegExp(escapeRegex(String(q).trim()), "i");
+
     const users = await User.find({
       $or: [
         { fullName: regex },
@@ -1768,7 +1594,6 @@ exports.searchUsers = async (req, res) => {
   }
 };
 
-// CHECK EMAIL AVAILABILITY
 exports.checkEmailAvailability = async (req, res) => {
   try {
     const { email } = req.query;

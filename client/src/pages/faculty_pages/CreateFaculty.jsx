@@ -64,9 +64,7 @@ const CreateFaculty = () => {
   const navigate = useNavigate();
   const { api } = useAuth();
 
-  
   // STATE
-  
 
   const [creationMode, setCreationMode] = useState("existing");
 
@@ -93,9 +91,7 @@ const CreateFaculty = () => {
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  
   // LOAD ONLY USERS WITH ROLE = "user"
-  
 
   const loadUsers = async () => {
     try {
@@ -196,7 +192,6 @@ const CreateFaculty = () => {
     });
   }, [users, userSearch]);
 
-
   const handleModeChange = (mode) => {
     setCreationMode(mode);
 
@@ -290,7 +285,7 @@ const CreateFaculty = () => {
     }));
   };
 
-    const handleAddSubject = () => {
+  const handleAddSubject = () => {
     const subjectCode = subjectInput.subjectCode.trim();
     const subjectName = subjectInput.subjectName.trim();
 
@@ -331,7 +326,6 @@ const CreateFaculty = () => {
 
     setErrorMessage("");
   };
-
 
   const handleRemoveSubject = (index) => {
     setFormData((previous) => ({
@@ -374,7 +368,6 @@ const CreateFaculty = () => {
     setErrorMessage("");
   };
 
-  
   const handleRemoveClass = (index) => {
     setFormData((previous) => ({
       ...previous,
@@ -450,56 +443,31 @@ const CreateFaculty = () => {
             : undefined,
 
         fullName: formData.fullName.trim(),
-
         email: formData.email.trim().toLowerCase(),
-
         password: creationMode === "new" ? formData.password.trim() : undefined,
-
         role: "faculty",
-
         phone: formData.phone.trim(),
-
         dateOfBirth: formData.dateOfBirth || null,
-
         gender: formData.gender,
-
         addressLine1: formData.addressLine1.trim(),
-
         addressLine2: formData.addressLine2.trim(),
-
         city: formData.city.trim(),
-
         state: formData.state.trim(),
-
         country: formData.country.trim(),
-
         postalCode: formData.postalCode.trim(),
-
         nationality: formData.nationality.trim(),
-
         preferredCurrency: formData.preferredCurrency.trim(),
-
         employeeId: formData.employeeId.trim(),
-
         designation: formData.designation.trim(),
-
         department: formData.department.trim(),
-
         qualification: formData.qualification.trim(),
-
         specialization: formData.specialization.trim(),
-
         experience:
           formData.experience === "" ? 0 : Number(formData.experience),
-
         joiningDate: formData.joiningDate || null,
-
         employmentType: formData.employmentType,
-
         status: formData.status,
-
         subjects: formData.subjects,
-
         classes: formData.classes,
       };
 
@@ -510,18 +478,11 @@ const CreateFaculty = () => {
       });
 
       console.log("CREATE FACULTY PAYLOAD:", payload);
-
       const response = await api.post("/faculty/create-faculty", payload);
-
       console.log("CREATE FACULTY RESPONSE:", response?.data);
-
       setSuccessMessage(
         response?.data?.message || "Faculty created successfully.",
       );
-
-      /*
-        Reset form
-      */
 
       setFormData({
         ...initialForm,
@@ -530,23 +491,14 @@ const CreateFaculty = () => {
       });
 
       setSelectedUser(null);
-
       setUserSearch("");
-
       setShowUserDropdown(false);
-
       setSubjectInput({
         subjectCode: "",
         subjectName: "",
       });
 
       setClassInput("");
-
-      /*
-        Remove the converted user from the
-        local list because the user's role
-        should now be faculty.
-      */
 
       if (creationMode === "existing" && selectedUser) {
         const selectedUserId = selectedUser._id || selectedUser.id;
@@ -561,36 +513,22 @@ const CreateFaculty = () => {
       }, 1000);
     } catch (error) {
       console.error("CREATE FACULTY ERROR:", error);
-
       console.error("CREATE FACULTY RESPONSE:", error?.response?.data);
-
       const backendMessage =
         error?.response?.data?.message || error?.response?.data?.error;
-
       setErrorMessage(backendMessage || "Unable to create faculty.");
     } finally {
       setLoading(false);
     }
   };
 
-  
-  // CLASSES
-  
-
   const inputClass =
     "mt-2 block w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100";
-
   const labelClass = "text-sm font-semibold text-gray-700";
-
-  
-  // RENDER
-  
 
   return (
     <div className="min-h-full bg-transparent px-6 py-10 lg:px-8">
       <div className="mx-auto w-full max-w-6xl">
-        {/* BACK */}
-
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -599,8 +537,6 @@ const CreateFaculty = () => {
           <FaArrowLeft />
           Back
         </button>
-
-        {/* HEADER */}
 
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">
@@ -612,8 +548,6 @@ const CreateFaculty = () => {
             into a faculty account.
           </p>
         </div>
-
-        {/* SUCCESS */}
 
         {successMessage && (
           <div className="mb-6 rounded-xl bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-700 ring-1 ring-emerald-200">

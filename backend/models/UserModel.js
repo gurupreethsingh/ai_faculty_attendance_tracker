@@ -3,16 +3,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 
-// =====================================================
-// USER SCHEMA
-// =====================================================
-
 const userSchema = new mongoose.Schema(
   {
-    // =================================================
-    // BASIC USER INFORMATION
-    // =================================================
-
     fullName: {
       type: String,
       required: [true, "Full name is required"],
@@ -35,10 +27,6 @@ const userSchema = new mongoose.Schema(
       minlength: [6, "Password must be at least 6 characters"],
       select: false,
     },
-
-    // =================================================
-    // APPLICATION ROLE
-    // =================================================
 
     role: {
       type: String,
@@ -64,42 +52,17 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
 
-    // =================================================
-    // ACCOUNT STATUS
-    // =================================================
-
-    /*
-     * This belongs to the User account itself.
-     *
-     * Example:
-     *
-     * Faculty leaves college:
-     *
-     * user.role = "user"
-     * user.isActive = true
-     *
-     * Their account still exists.
-     */
-
     isActive: {
       type: Boolean,
       default: true,
       index: true,
     },
 
-    // =================================================
-    // CONTACT
-    // =================================================
-
     phone: {
       type: String,
       default: "",
       trim: true,
     },
-
-    // =================================================
-    // PERSONAL INFORMATION
-    // =================================================
 
     dateOfBirth: {
       type: Date,
@@ -111,10 +74,6 @@ const userSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
-
-    // =================================================
-    // ADDRESS
-    // =================================================
 
     addressLine1: {
       type: String,
@@ -164,19 +123,11 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // =================================================
-    // PROFILE
-    // =================================================
-
     profileImage: {
       type: String,
       default: "",
       trim: true,
     },
-
-    // =================================================
-    // PASSWORD RESET
-    // =================================================
 
     resetPasswordToken: {
       type: String,
@@ -195,10 +146,6 @@ const userSchema = new mongoose.Schema(
   },
 );
 
-// =====================================================
-// PASSWORD HASHING
-// =====================================================
-
 userSchema.pre("save", async function () {
   if (!this.isModified("password")) {
     return;
@@ -207,40 +154,19 @@ userSchema.pre("save", async function () {
   this.password = await bcrypt.hash(this.password, 10);
 });
 
-// =====================================================
-// COMPARE PASSWORD
-// =====================================================
-
 userSchema.methods.comparePassword = async function (enteredPassword) {
   return bcrypt.compare(String(enteredPassword || ""), this.password);
 };
 
-// =====================================================
-// GENERATE JWT
-// =====================================================
-
 userSchema.methods.getJwtToken = function () {
-  const secret = process.env.JWT_SECRET;
-
-  if (!secret) {
-    throw new Error("JWT_SECRET is not configured.");
-  }
-
   return jwt.sign(
     {
-      id: this._id.toString(),
+      id: this._id,
       role: this.role,
     },
-    secret,
-    {
-      expiresIn: process.env.JWT_ACCESS_EXPIRE || "15m",
-    },
+    process.env.JWT_SECRET,
   );
 };
-
-// =====================================================
-// PASSWORD RESET TOKEN
-// =====================================================
 
 userSchema.methods.getResetPasswordToken = function () {
   const resetToken = crypto.randomBytes(20).toString("hex");
@@ -254,9 +180,5 @@ userSchema.methods.getResetPasswordToken = function () {
 
   return resetToken;
 };
-
-// =====================================================
-// EXPORT
-// =====================================================
 
 module.exports = mongoose.models.User || mongoose.model("User", userSchema);
